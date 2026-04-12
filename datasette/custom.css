@@ -1,0 +1,273 @@
+/* BiometalDB Custom Theme */
+
+/* --- Fonts --- */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* --- Base --- */
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #f0f2f5;
+  color: #1e293b;
+  margin: 0;
+  padding: 0;
+  line-height: 1.5;
+}
+
+/* --- Header --- */
+header {
+  background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0f172a 100%);
+  color: #fff !important;
+  padding: 1.2rem 2rem;
+  border-bottom: 3px solid #3b82f6;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+header h1 {
+  color: #fff !important;
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+header p, header .description {
+  color: #94a3b8;
+  font-size: 0.9rem;
+  margin: 0.4rem 0 0;
+}
+
+header a { color: #60a5fa !important; text-decoration: none; }
+header a:hover { color: #93c5fd !important; }
+
+/* --- Breadcrumb --- */
+.crumbs {
+  font-size: 0.8rem;
+  margin-bottom: 0.5rem;
+}
+
+.crumbs a {
+  color: #60a5fa !important;
+}
+
+/* --- Navigation tabs --- */
+nav {
+  background: transparent !important;
+}
+
+/* --- Content area --- */
+.content {
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 1rem 1.5rem;
+}
+
+/* --- Tables --- */
+table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  font-size: 0.85rem;
+  background: #fff;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
+}
+
+table thead th {
+  background: #f1f5f9;
+  color: #334155;
+  font-weight: 600;
+  font-size: 0.8rem;
+  padding: 0.6rem 0.8rem;
+  text-align: left;
+  border-bottom: 2px solid #e2e8f0;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+table thead th a {
+  color: #334155 !important;
+  text-decoration: none;
+}
+
+table thead th a:hover {
+  color: #3b82f6 !important;
+}
+
+table tbody td {
+  padding: 0.5rem 0.8rem;
+  border-bottom: 1px solid #f1f5f9;
+  max-width: 350px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: top;
+}
+
+table tbody tr:hover {
+  background: #eff6ff;
+}
+
+table tbody tr:nth-child(even) {
+  background: #f1f5f9;
+}
+
+table tbody tr:nth-child(even):hover {
+  background: #eff6ff;
+}
+
+/* Numeric columns - right align */
+td:nth-child(n+2) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.82rem;
+}
+
+/* First column (usually ID or name) stays left */
+td:first-child {
+  text-align: left;
+  font-family: 'Inter', sans-serif;
+  font-weight: 500;
+}
+
+/* --- Facets sidebar --- */
+.facet-info {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.facet-info h4 {
+  color: #1e40af;
+  margin: 0 0 0.75rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.facet-info li {
+  font-size: 0.85rem;
+  padding: 0.15rem 0;
+}
+
+/* --- Filter form --- */
+.form-submit, button, .button,
+input[type="submit"] {
+  background: #3b82f6;
+  color: #fff;
+  border: none;
+  padding: 0.45rem 1.2rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: background 0.15s;
+}
+
+.form-submit:hover, button:hover, .button:hover {
+  background: #2563eb;
+}
+
+/* --- Search / inputs --- */
+input[type="search"], input[type="text"],
+select {
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.85rem;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+input[type="search"]:focus, input[type="text"]:focus,
+select:focus {
+  border-color: #3b82f6;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+/* --- Links --- */
+a {
+  color: #2563eb;
+  text-decoration: none;
+}
+
+a:hover {
+  color: #1d4ed8;
+  text-decoration: underline;
+}
+
+/* --- SQL query page --- */
+.sql-query textarea,
+pre {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.82rem;
+  background: #1e293b;
+  color: #e2e8f0;
+  padding: 1rem;
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+/* --- Code blocks --- */
+code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.82rem;
+  background: #f1f5f9;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  color: #1e40af;
+}
+
+/* --- Footer --- */
+footer {
+  text-align: center;
+  padding: 1.5rem;
+  color: #94a3b8;
+  font-size: 0.75rem;
+  border-top: 1px solid #e2e8f0;
+  margin-top: 2rem;
+}
+
+footer a {
+  color: #64748b;
+}
+
+/* --- Row count h3 --- */
+h3 {
+  color: #475569;
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 1rem 0 0.5rem;
+}
+
+/* --- Description paragraph --- */
+.description {
+  color: #64748b;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+  padding: 0.5rem 0;
+}
+
+/* --- Hide column descriptions (dl) - redundant with table headers --- */
+dl {
+  display: none;
+}
+
+/* --- Responsive --- */
+@media (max-width: 768px) {
+  table { font-size: 0.75rem; }
+  table thead th, table tbody td { padding: 0.3rem 0.4rem; }
+  header h1 { font-size: 1.1rem; }
+  header { padding: 0.8rem 1rem; }
+  .content { padding: 0.75rem; }
+}
+
+/* --- Hide excessive whitespace --- */
+body > .not-footer {
+  min-height: auto;
+}

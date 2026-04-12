@@ -1,0 +1,109 @@
+{
+  "title": "BiometalDB — Metal-Organic Anticancer Complexes",
+  "extra_css_urls": ["/static/custom.css"],
+  "description": "База данных металлорганических противоопухолевых комплексов: 7 058 комплексов, 26 801 измерение, 1 921 статья.",
+  "databases": {
+    "biometaldb": {
+      "tables": {
+        "sqlite_sequence": { "hidden": true },
+        "complexes": {
+          "title": "Комплексы",
+          "description": "Металлорганические комплексы с SMILES, TUCAN, MOL V3000.",
+          "sort_desc": "id",
+          "facets": ["metal", "oxidation_state"],
+          "columns": {
+            "id": "ID",
+            "smiles_ligands": "SMILES лигандов",
+            "metal": "Металл",
+            "oxidation_state": "Степень окисления",
+            "charge_complex": "Заряд",
+            "donor_atoms": "Донорные атомы",
+            "tucan": "TUCAN (канонический ID)",
+            "has_mol3": "MOL V3000"
+          }
+        },
+        "measurements": {
+          "title": "Измерения цитотоксичности",
+          "description": "IC50, клеточные линии, условия облучения.",
+          "sort_desc": "id",
+          "facets": ["cell_line", "year"],
+          "columns": {
+            "complex_id": "ID комплекса",
+            "abbreviation": "Аббревиатура",
+            "ic50_dark": "IC50 dark (µM)",
+            "ic50_light": "IC50 light (µM)",
+            "ic50_cisplatin": "Cisplatin ref (µM)",
+            "cell_line": "Кл. линия",
+            "exposure_time_h": "Экспозиция (ч)",
+            "doi": "DOI",
+            "year": "Год"
+          }
+        },
+        "papers": {
+          "title": "Статьи",
+          "description": "Метаданные публикаций из CrossRef.",
+          "sort_desc": "id",
+          "columns": {
+            "doi": "DOI",
+            "year": "Год",
+            "title": "Название",
+            "authors": "Авторы"
+          }
+        },
+        "v_compounds": {
+          "title": "Полный обзор",
+          "description": "Комплексы + измерения + статьи. mol3_download — ссылка на скачивание MOL V3000.",
+          "sort_desc": "complex_id",
+          "facets": ["metal", "cell_line", "year"],
+          "columns": {
+            "complex_id": "ID",
+            "metal": "Металл",
+            "ox": "Окс.",
+            "charge": "Заряд",
+            "smiles_ligands": "SMILES",
+            "donor_atoms": "Доноры",
+            "tucan": "TUCAN",
+            "mol3_download": "⬇ MOL V3000",
+            "cell_line": "Кл. линия",
+            "ic50_dark_uM": "IC50 dark (µM)",
+            "ic50_light_uM": "IC50 light (µM)",
+            "cisplatin_ref_uM": "Cisplatin ref",
+            "exposure_h": "Экспозиция (ч)",
+            "abbreviation": "Аббр.",
+            "doi": "DOI",
+            "year": "Год",
+            "title": "Статья",
+            "authors": "Авторы"
+          }
+        },
+        "v_by_metal": {
+          "title": "По металлам",
+          "description": "Сводка по металлам.",
+          "columns": {
+            "metal": "Металл",
+            "n_complexes": "Комплексов",
+            "n_measurements": "Измерений",
+            "n_cell_lines": "Кл. линий",
+            "n_papers": "Статей",
+            "best_ic50_dark_uM": "Лучшая IC50 (µM)",
+            "n_with_tucan": "С TUCAN",
+            "cell_lines_top": "Линии"
+          }
+        },
+        "v_by_cell_line": {
+          "title": "По клеточным линиям",
+          "description": "Сводка по линиям.",
+          "sort_desc": "n_complexes",
+          "columns": {
+            "cell_line": "Линия",
+            "n_complexes": "Комплексов",
+            "n_metals": "Металлов",
+            "n_papers": "Статей",
+            "best_ic50_dark_uM": "Лучшая IC50 (µM)",
+            "metals": "Металлы"
+          }
+        }
+      }
+    }
+  }
+}

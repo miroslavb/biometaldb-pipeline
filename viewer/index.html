@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BiometalDB — 3D MOL Viewer</title>
+<script src="https://3Dmol.org/build/3Dmol-min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0d1117; color: #c9d1d9; }
+  .header { background: #161b22; border-bottom: 1px solid #30363d; padding: 16px 24px; display: flex; align-items: center; gap: 16px; }
+  .header h1 { font-size: 20px; color: #58a6ff; }
+  .header span { color: #8b949e; font-size: 14px; }
+  .layout { display: flex; height: calc(100vh - 57px); }
+  .sidebar { width: 380px; background: #161b22; border-right: 1px solid #30363d; display: flex; flex-direction: column; }
+  .search { padding: 12px; border-bottom: 1px solid #30363d; }
+  .search input { width: 100%; padding: 8px 12px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; font-size: 14px; outline: none; }
+  .search input:focus { border-color: #58a6ff; }
+  .filters { padding: 8px 12px; border-bottom: 1px solid #30363d; display: flex; gap: 8px; flex-wrap: wrap; }
+  .filters select { padding: 4px 8px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; font-size: 12px; }
+  .list { flex: 1; overflow-y: auto; }
+  .item { padding: 10px 12px; border-bottom: 1px solid #21262d; cursor: pointer; transition: background 0.15s; }
+  .item:hover { background: #1f2937; }
+  .item.active { background: #1c3a5e; border-left: 3px solid #58a6ff; }
+  .item .id { color: #58a6ff; font-weight: 600; font-size: 13px; }
+  .item .metal { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 11px; font-weight: 600; margin-left: 6px; }
+  .item .smiles { color: #8b949e; font-size: 12px; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item .info { color: #8b949e; font-size: 11px; margin-top: 2px; }
+  .main { flex: 1; display: flex; flex-direction: column; }
+  .viewer-wrap { flex: 1; position: relative; background: #0d1117; }
+  #molviewer { width: 100%; height: 100%; }
+  .detail-bar { background: #161b22; border-top: 1px solid #30363d; padding: 12px 20px; display: flex; align-items: center; gap: 16px; min-height: 48px; }
+  .detail-bar .name { font-weight: 600; color: #f0f6fc; }
+  .detail-bar .meta { color: #8b949e; font-size: 13px; }
+  .detail-bar a { color: #58a6ff; text-decoration: none; font-size: 13px; }
+  .detail-bar a:hover { text-decoration: underline; }
+  .loading { display: flex; align-items: center; justify-content: center; height: 100%; color: #8b949e; }
+  .empty { padding: 20px; text-align: center; color: #8b949e; }
+  .count { padding: 8px 12px; font-size: 12px; color: #8b949e; border-bottom: 1px solid #30363d; }
+  .metal-Ru { background: #1f3a2f; color: #3fb950; }
+  .metal-Os { background: #2d1f3a; color: #bc8cff; }
+  .metal-Ir { background: #3a2d1f; color: #d29922; }
+  .metal-Rh { background: #1f2d3a; color: #58a6ff; }
+  .metal-Re { background: #3a1f2d; color: #f778ba; }
+  .metal-default { background: #21262d; color: #8b949e; }
+  .spinner { animation: spin 1s linear infinite; display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .controls { position: absolute; top: 10px; right: 10px; z-index: 10; display: flex; gap: 6px; }
+  .controls button { padding: 6px 12px; background: #21262d; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; cursor: pointer; font-size: 12px; }
+  .controls button:hover { background: #30363d; }
+  .controls button.active { background: #1c3a5e; border-color: #58a6ff; }
+  .load-more { padding: 12px; text-align: center; color: #58a6ff; font-size: 13px; cursor: pointer; }
+  .load-more:hover { background: #1f2937; }
+  .loading-inline { text-align: center; padding: 12px; color: #8b949e; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🔬 BiometalDB</h1>
+  <span>3D MOL Viewer</span>
+</div>
+
+<div class="layout">
+  <div class="sidebar">
+    <div class="search">
+      <input type="text" id="searchInput" placeholder="Search by ID, metal, SMILES...">
+    </div>
+    <div class="filters">
+      <select id="metalFilter"><option value="">All metals</option></select>
+      <select id="hasDataFilter">
+        <option value="">All</option>
+        <option value="1">Has MOL3</option>
+      </select>
+    </div>
+    <div class="count" id="countBar">Loading...</div>
+    <div class="list" id="complexList"></div>
+  </div>
+  <div class="main">
+    <div class="viewer-wrap">
+      <div class="controls">
+        <button onclick="setStyle('stick')" class="active" id="btn-stick">Stick</button>
+        <button onclick="setStyle('sphere')" id="btn-sphere">Sphere</button>
+        <button onclick="setStyle('line')" id="btn-line">Line</button>
+        <button onclick="setStyle('ballstick')" id="btn-ballstick">Ball+Stick</button>
+        <button onclick="resetView()">Reset</button>
+      </div>
+      <div id="molviewer">
+        <div class="loading" id="placeholder">Select a complex to view</div>
+      </div>
+    </div>
+    <div class="detail-bar" id="detailBar">
+      <span class="meta">Select a complex from the list</span>
+    </div>
+  </div>
+</div>
+
+<script>
+const MOL_SERVER = '';
+
+let viewer = null;
+let currentStyle = 'stick';
+let currentPage = 0;
+const PAGE_SIZE = 50;
+let totalLoaded = 0;
+let totalCount = 0;
+let isLoading = false;
+let allMetals = [];
+let currentQuery = '';
+
+// Init 3Dmol viewer
+function initViewer() {
+  const el = document.getElementById('molviewer');
+  viewer = $3Dmol.createViewer(el, {
+    backgroundColor: '#0d1117',
+    antialias: true,
+  });
+}
+
+// Load a page of complexes from the paginated API
+async function loadPage(reset) {
+  if (isLoading) return;
+  if (!reset && totalLoaded >= totalCount) return;
+
+  isLoading = true;
+  const offset = reset ? 0 : totalLoaded;
+  const metal = document.getElementById('metalFilter').value;
+  const hasMol = document.getElementById('hasDataFilter').value;
+  const q = document.getElementById('searchInput').value.trim();
+
+  if (reset) {
+    document.getElementById('complexList').innerHTML = '';
+    totalLoaded = 0;
+    currentPage = 0;
+  }
+
+  // Show loading indicator
+  let loader = document.getElementById('pageLoader');
+  if (!loader) {
+    loader = document.createElement('div');
+    loader.id = 'pageLoader';
+    loader.className = 'loading-inline';
+    loader.innerHTML = '<span class="spinner">⏳</span> Loading...';
+    document.getElementById('complexList').appendChild(loader);
+  }
+
+  try {
+    const params = new URLSearchParams({
+      offset: offset,
+      limit: PAGE_SIZE,
+    });
+    if (metal) params.set('metal', metal);
+    if (hasMol) params.set('has_mol3', hasMol);
+    if (q) params.set('q', q);
+
+    const res = await fetch(MOL_SERVER + '/api/complexes?' + params);
+    const data = await res.json();
+
+    // Remove loader
+    loader.remove();
+
+    // Update metals filter (only on first load)
+    if (data.metals && allMetals.length === 0) {
+      allMetals = data.metals;
+      populateMetalFilter(data.metals);
+    }
+
+    totalCount = data.total;
+    totalLoaded = offset + data.results.length;
+
+    document.getElementById('countBar').textContent = `${totalLoaded} of ${totalCount} complexes`;
+
+    const list = document.getElementById('complexList');
+
+    data.results.forEach(c => {
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.dataset.id = c.complex_id;
+      const metalClass = 'metal-' + (['Ru','Os','Ir','Rh','Re'].includes(c.metal) ? c.metal : 'default');
+      div.innerHTML = `
+        <div>
+          <span class="id">#${c.complex_id}</span>
+          <span class="metal ${metalClass}">${c.metal}${c.oxidation_state ? ' ' + c.oxidation_state : ''}</span>
+          ${c.has_mol3 ? '✅' : '❌'}
+        </div>
+        <div class="smiles">${c.smiles_ligands || '—'}</div>
+      `;
+      div.onclick = () => selectComplex(c);
+      list.appendChild(div);
+    });
+
+    // Add "load more" button or sentinel
+    if (totalLoaded < totalCount) {
+      const more = document.createElement('div');
+      more.className = 'load-more';
+      more.id = 'loadMore';
+      more.textContent = `Load more (${totalCount - totalLoaded} remaining)`;
+      more.onclick = () => { more.remove(); loadPage(false); };
+      list.appendChild(more);
+    }
+
+    currentPage++;
+  } catch(e) {
+    const loader2 = document.getElementById('pageLoader');
+    if (loader2) loader2.remove();
+    console.error('Failed to load complexes:', e);
+    document.getElementById('countBar').textContent = 'Error loading — retry?';
+  }
+
+  isLoading = false;
+}
+
+function populateMetalFilter(metals) {
+  const sel = document.getElementById('metalFilter');
+  sel.innerHTML = '<option value="">All metals</option>';
+  metals.forEach(m => {
+    const opt = document.createElement('option');
+    opt.value = m;
+    opt.textContent = m;
+    sel.appendChild(opt);
+  });
+}
+
+async function selectComplex(c) {
+  // Highlight
+  document.querySelectorAll('.item.active').forEach(el => el.classList.remove('active'));
+  const item = document.querySelector(`.item[data-id="${c.complex_id}"]`);
+  if (item) item.classList.add('active');
+
+  // Update detail bar
+  document.getElementById('detailBar').innerHTML = `
+    <span class="name">Complex #${c.complex_id}</span>
+    <span class="meta">${c.metal}${c.oxidation_state ? ' (+' + c.oxidation_state + ')' : ''}</span>
+    <span class="meta">${c.smiles_ligands ? c.smiles_ligands.substring(0, 60) : ''}</span>
+    ${c.has_mol3 ? `<a href="${MOL_SERVER}/mol3/${c.complex_id}" download>⬇ Download MOL</a>` : '<span class="meta">No MOL file</span>'}
+  `;
+
+  if (!c.has_mol3) {
+    document.getElementById('molviewer').innerHTML = '<div class="loading">No MOL file for this complex</div>';
+    return;
+  }
+
+  // Fetch and render
+  document.getElementById('molviewer').innerHTML = '<div class="loading"><span class="spinner">⏳</span> Loading structure...</div>';
+
+  try {
+    const res = await fetch(MOL_SERVER + '/mol3/' + c.complex_id + '/view');
+    const molData = await res.text();
+
+    // Clear and reinit viewer
+    document.getElementById('molviewer').innerHTML = '';
+    initViewer();
+
+    viewer.addModel(molData, 'mol');
+    applyStyle(viewer, currentStyle);
+    viewer.zoomTo();
+    viewer.render();
+    // No auto-spin — user can rotate manually
+  } catch(e) {
+    document.getElementById('molviewer').innerHTML = '<div class="loading">Failed to load MOL file</div>';
+    console.error(e);
+  }
+}
+
+function applyStyle(v, style) {
+  v.setStyle({}, {});
+  switch(style) {
+    case 'stick':
+      v.setStyle({}, {stick: {radius: 0.15, colorscheme: 'Jmol'}});
+      break;
+    case 'sphere':
+      v.setStyle({}, {sphere: {colorscheme: 'Jmol'}});
+      break;
+    case 'line':
+      v.setStyle({}, {line: {colorscheme: 'Jmol'}});
+      break;
+    case 'ballstick':
+      v.setStyle({}, {stick: {radius: 0.1, colorscheme: 'Jmol'}, sphere: {scale: 0.25, colorscheme: 'Jmol'}});
+      break;
+  }
+}
+
+function setStyle(style) {
+  currentStyle = style;
+  // Update button states
+  document.querySelectorAll('.controls button').forEach(b => b.classList.remove('active'));
+  const btn = document.getElementById('btn-' + style);
+  if (btn) btn.classList.add('active');
+  if (viewer) {
+    applyStyle(viewer, style);
+    viewer.render();
+  }
+}
+
+function resetView() {
+  if (viewer) {
+    viewer.zoomTo();
+    viewer.render();
+  }
+}
+
+// Debounced search — reload from scratch
+let searchTimer;
+document.getElementById('searchInput').addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => loadPage(true), 300);
+});
+document.getElementById('metalFilter').addEventListener('change', () => loadPage(true));
+document.getElementById('hasDataFilter').addEventListener('change', () => loadPage(true));
+
+// Infinite scroll on the list
+const listEl = document.getElementById('complexList');
+listEl.addEventListener('scroll', () => {
+  const { scrollTop, scrollHeight, clientHeight } = listEl;
+  if (scrollHeight - scrollTop - clientHeight < 200) {
+    loadPage(false);
+  }
+});
+
+// Init — load first page only
+initViewer();
+loadPage(true);
+</script>
+</body>
+</html>
