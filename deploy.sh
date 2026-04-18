@@ -7,6 +7,9 @@ PORT=8502
 
 cd "$DEPLOY_DIR"
 
+echo "=== Installing system dependencies ==="
+apt-get install -y openbabel python3-openbabel avogadro 2>/dev/null || true
+
 echo "=== Pulling latest from GitHub ==="
 git pull origin master
 
