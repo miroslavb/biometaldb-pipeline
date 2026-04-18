@@ -16,117 +16,16 @@ VIEWER_DIR = os.path.join(BASE_DIR, "viewer")
 
 app = Flask(__name__)
 
+# Register enhanced D-MPNN routes
+from dmpnn_routes import register_dmpnn_routes
+register_dmpnn_routes(app)
 
-def render_2d(cid):
-    """Render MOL to 2D PNG, return base64 string."""
-    mol_path = os.path.join(MOL_DIR, f"complex_{cid}.mol")
-    if not os.path.exists(mol_path):
-        return None
-    try:
-        mol = Chem.MolFromMolFile(mol_path, sanitize=False, removeHs=False)
-        if mol is None:
-            return None
-        try:
-            AllChem.Compute2DCoords(mol)
-        except:
-            pass
-        drawer = Draw.MolDraw2DCairo(520, 400)
-        drawer.drawOptions().addStereoAnnotation = True
-        drawer.drawOptions().bondLineWidth = 1.5
-        drawer.DrawMolecule(mol)
-        drawer.FinishDrawing()
-        return base64.b64encode(drawer.GetDrawingText()).decode()
-    except:
-        return None
+# Register enhanced complexes routes (pagination, filters, 3D structures)
+from complexes_routes import register_complexes_routes
+register_complexes_routes(app)
 
 
-HTML_PAGE = """
-<!DOCTYPE html><html><head><meta charset="utf-8">
-<title>Complex #{{ cid }} — BiometalDB</title>
-<style>
-body{font-family:'Inter',-apple-system,sans-serif;margin:0;background:#f0f2f5}
-.hdr{background:linear-gradient(135deg,#0f172a,#1e3a5f);color:#fff;padding:1rem 2rem;border-bottom:3px solid #3b82f6}
-.hdr h1{margin:0;font-size:1.4rem}.hdr a{color:#60a5fa;text-decoration:none;margin-right:1rem;font-size:0.85rem}
-.wrap{max-width:1100px;margin:1.5rem auto;display:grid;grid-template-columns:520px 1fr;gap:1.5rem;padding:0 1.5rem}
-.card{background:#fff;border-radius:8px;padding:1.2rem;box-shadow:0 1px 3px rgba(0,0,0,.08)}
-.card h2{font-size:1rem;color:#1e40af;margin:0 0 .8rem;border-bottom:2px solid #e2e8f0;padding-bottom:.4rem}
-.str{text-align:center}.str img{max-width:100%;border:1px solid #e2e8f0;border-radius:6px}
-.dl{margin-top:1rem;display:flex;gap:.75rem;flex-wrap:wrap}
-.btn{display:inline-block;padding:.5rem 1rem;border-radius:6px;text-decoration:none;font-size:.85rem;font-weight:500}
-.bp{background:#3b82f6;color:#fff}.bp:hover{background:#2563eb}
-.bs{background:#e2e8f0;color:#334155}.bs:hover{background:#cbd5e1}
-.mt table{width:100%;border-collapse:collapse;font-size:.85rem}
-.mt td{padding:.35rem .5rem;border-bottom:1px solid #f1f5f9}
-.mt td:first-child{font-weight:600;color:#475569;width:140px}
-.tuc{font-family:'JetBrains Mono',monospace;font-size:.72rem;color:#64748b;word-break:break-all;background:#f8fafc;padding:.5rem;border-radius:4px;margin-top:.5rem}
-</style></head><body>
-<div class="hdr">
-<div><a href="/">home</a><a href="/complexes">complexes</a><a href="http://38.19.202.28:8501/biometaldb/complexes">Datasette</a></div>
-<h1>Complex #{{ cid }} — {{ metal }}({{ ox }})</h1></div>
-<div class="wrap">
-<div class="card str"><h2>2D Structure</h2>
-{% if img %}<img src="data:image/png;base64,{{ img }}" alt="Structure">
-{% else %}<p style="color:#94a3b8">Could not render.</p>{% endif %}
-<div class="dl"><a class="btn bp" href="/mol3/{{ cid }}">⬇ MOL V3000</a>
-<a class="btn bs" href="/mol3/{{ cid }}/view">Raw MOL</a>
-<a class="btn bs" href="/mol3/{{ cid }}/smiles">SMILES JSON</a></div></div>
-<div>
-<div class="card mt"><h2>Info</h2><table>
-<tr><td>ID</td><td>{{ cid }}</td></tr>
-<tr><td>Metal</td><td>{{ metal }}</td></tr>
-<tr><td>Oxidation state</td><td>{{ ox }}</td></tr>
-<tr><td>Charge</td><td>{{ charge }}</td></tr>
-<tr><td>Donor atoms</td><td>{{ donors or '—' }}</td></tr>
-<tr><td>Abbreviation</td><td>{{ abbr or '—' }}</td></tr>
-<tr><td>SMILES</td><td style="font-family:monospace;font-size:.72rem">{{ smi[:200] }}{% if smi|length>200 %}...{% endif %}</td></tr>
-</table></div>
-<div class="card mt" style="margin-top:1rem"><h2>TUCAN</h2>
-<div class="tuc">{{ tucan or 'Not generated' }}</div></div>
-{% if meas %}
-<div class="card mt" style="margin-top:1rem"><h2>Measurements ({{ meas|length }})</h2>
-<table><tr><td>Cell line</td><td>IC50 dark (µM)</td><td>IC50 light (µM)</td><td>DOI</td><td>Year</td></tr>
-{% for m in meas %}<tr>
-<td>{{ m[0] or '—' }}</td><td>{{ m[1] or '—' }}</td><td>{{ m[2] or '—' }}</td>
-<td>{% if m[3] %}<a href="https://doi.org/{{ m[3] }}">{{ m[3][:30] }}{% if m[3]|length>30 %}...{% endif %}</a>{% else %}—{% endif %}</td>
-<td>{{ m[4] or '—' }}</td></tr>{% endfor %}</table></div>{% endif %}
-</div></div></body></html>"""
-
-
-@app.route("/complexes")
-def list_complexes():
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute("""SELECT c.id, c.metal, c.oxidation_state, c.donor_atoms,
-        (SELECT COUNT(*) FROM measurements WHERE complex_id=c.id) as n
-        FROM complexes c ORDER BY c.id DESC LIMIT 100""")
-    rows = cur.fetchall()
-    conn.close()
-    h = '<!DOCTYPE html><html><head><title>Complexes</title><style>body{font-family:sans-serif;max-width:900px;margin:2rem auto;padding:0 1rem}table{width:100%;border-collapse:collapse}th,td{padding:.4rem;text-align:left;border-bottom:1px solid #eee}th{background:#f1f5f9;font-size:.8rem}a{color:#2563eb;text-decoration:none}</style></head><body><h1>Last 100 complexes</h1><table><tr><th>ID</th><th>Metal</th><th>Ox</th><th>Donors</th><th>Meas.</th></tr>'
-    for cid, m, o, d, n in rows:
-        h += f'<tr><td><a href="/complexes/{cid}">{cid}</a></td><td>{m}</td><td>{o}</td><td>{d or "—"}</td><td>{n}</td></tr>'
-    return h + '</table></body></html>'
-
-
-@app.route("/complexes/<int:cid>")
-def complex_detail(cid):
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute("""SELECT smiles_ligands, metal, oxidation_state, charge_complex,
-        donor_atoms, tucan FROM complexes WHERE id=?""", (cid,))
-    row = cur.fetchone()
-    if not row:
-        conn.close(); abort(404)
-    smi, metal, ox, charge, donors, tucan = row
-    cur.execute("SELECT abbreviation FROM measurements WHERE complex_id=? AND abbreviation IS NOT NULL LIMIT 1", (cid,))
-    abbr = cur.fetchone()
-    cur.execute("""SELECT cell_line, ic50_dark, ic50_light, doi, year
-        FROM measurements WHERE complex_id=? ORDER BY ic50_dark ASC NULLS LAST""", (cid,))
-    meas = cur.fetchall()
-    conn.close()
-    img = render_2d(cid)
-    return render_template_string(HTML_PAGE, cid=cid, metal=metal, ox=ox,
-        charge=charge, donors=donors, smi=smi, tucan=tucan,
-        abbr=abbr[0] if abbr else None, img=img, meas=meas)
+# Complexes routes moved to complexes_routes.py (registered above)
 
 
 @app.route("/mol3/<int:complex_id>")
@@ -167,6 +66,36 @@ def complex_smiles(complex_id):
         "oxidation_state": row[2],
         "mol3_url": f"/mol3/{complex_id}",
     }
+
+
+@app.route("/mol3/<int:complex_id>/candidate")
+def view_candidate_mol(complex_id):
+    """Generate MOL from top-1 D-MPNN candidate SMILES (with coordination bonds)."""
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    # Try sequential first, then single-ligand
+    for ver in ['sequential', 'single-ligand']:
+        cur.execute("""SELECT r.candidate_smi FROM dmpnn_results r
+            JOIN dmpnn_summary s ON s.complex_id = r.complex_id
+            WHERE r.complex_id=? AND r.is_top1=1 AND s.scoring_version=?
+            LIMIT 1""", (complex_id, ver))
+        row = cur.fetchone()
+        if row:
+            break
+    conn.close()
+
+    if not row:
+        abort(404)
+
+    smi = row[0]
+    mol = Chem.MolFromSmiles(smi, sanitize=False)
+    if not mol:
+        abort(500)
+
+    # Compute 2D coords first (required for bonds to be preserved)
+    AllChem.Compute2DCoords(mol)
+    mol_block = Chem.MolToMolBlock(mol, forceV3000=True)
+    return Response(mol_block, mimetype="chemical/x-mdl-molfile")
 
 
 @app.route("/api/mol3/batch", methods=["POST"])
@@ -272,149 +201,7 @@ def serve_viewer(filename="index.html"):
     return send_file(path)
 
 
-DMPNN_PAGE = """<!DOCTYPE html><html><head><meta charset="utf-8">
-<title>D-MPNN Scoring — BiometalDB</title>
-<style>
-body{font-family:'Inter',-apple-system,sans-serif;margin:0;background:#f0f2f5}
-.hdr{background:linear-gradient(135deg,#0f172a,#1e3a5f);color:#fff;padding:1rem 2rem;border-bottom:3px solid #8b5cf6}
-.hdr h1{margin:0;font-size:1.4rem}.hdr a{color:#a78bfa;text-decoration:none;margin-right:1rem;font-size:.85rem}
-.wrap{max-width:1000px;margin:1.5rem auto;padding:0 1.5rem}
-.stats{display:flex;gap:1rem;margin-bottom:1.5rem}
-.stat{background:#fff;border-radius:8px;padding:1rem 1.5rem;box-shadow:0 1px 3px rgba(0,0,0,.08);flex:1;text-align:center}
-.stat .n{font-size:1.8rem;font-weight:700}.stat .l{font-size:.8rem;color:#64748b;margin-top:.2rem}
-.card{background:#fff;border-radius:8px;padding:1rem 1.2rem;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:.8rem}
-.card a{text-decoration:none}
-code{background:#f1f5f9;padding:.1rem .3rem;border-radius:3px;font-size:.82rem}
-</style></head><body>
-<div class="hdr"><div><a href="/">home</a><a href="/complexes">complexes</a><a href="/dmpnn">D-MPNN</a></div>
-<h1>D-MPNN Donor Prediction Results</h1></div>
-<div class="wrap">
-<div class="stats">
-<div class="stat"><div class="n" style="color:#16a34a">{{ n_match }}</div><div class="l">Exact match</div></div>
-<div class="stat"><div class="n" style="color:#d97706">{{ n_partial }}</div><div class="l">Partial match</div></div>
-<div class="stat"><div class="n" style="color:#dc2626">{{ n_fail }}</div><div class="l">No match</div></div>
-<div class="stat"><div class="n">{{ "%.2f"|format(avg) }}</div><div class="l">Mean score</div></div>
-</div>
-<h3 style="color:#334155">{{ total }} Ru complexes scored</h3>
-{{ cards|safe }}
-</div></body></html>"""
-
-DMPNN_DETAIL_PAGE = """<!DOCTYPE html><html><head><meta charset="utf-8">
-<title>Complex #{{ cid }} D-MPNN — BiometalDB</title>
-<style>
-body{font-family:'Inter',-apple-system,sans-serif;margin:0;background:#f0f2f5}
-.hdr{background:linear-gradient(135deg,#0f172a,#1e3a5f);color:#fff;padding:1rem 2rem;border-bottom:3px solid #8b5cf6}
-.hdr h1{margin:0;font-size:1.3rem}.hdr a{color:#a78bfa;text-decoration:none;margin-right:1rem;font-size:.85rem}
-.hdr .info{margin-top:.3rem;font-size:.85rem;color:#c4b5fd}
-.wrap{max-width:1100px;margin:1.5rem auto;padding:0 1.5rem}
-.meta{background:#fff;border-radius:8px;padding:1rem 1.2rem;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:1.5rem;display:flex;gap:2rem;align-items:center;flex-wrap:wrap}
-.meta .item{text-align:center}.meta .val{font-size:1.4rem;font-weight:700}.meta .lab{font-size:.75rem;color:#64748b}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:1rem}
-.cand{background:#fff;border-radius:8px;padding:.8rem;box-shadow:0 1px 3px rgba(0,0,0,.08)}
-.cand img{width:100%;border-radius:4px}
-.cand .smi{font-family:monospace;font-size:.68rem;color:#64748b;word-break:break-all;margin-top:.4rem;background:#f8fafc;padding:.3rem;border-radius:3px}
-</style></head><body>
-<div class="hdr"><div><a href="/">home</a><a href="/dmpnn">← all results</a><a href="/complexes/{{ cid }}">complex #{{ cid }}</a></div>
-<h1>Complex #{{ cid }} — {{ metal }}({{ ox }})</h1>
-<div class="info">GT: {{ gt }} → Top-1: {{ pred }}</div></div>
-<div class="wrap">
-<div class="meta">
-<div class="item"><div class="val">{{ nc }}</div><div class="lab">Candidates</div></div>
-<div class="item"><div class="val">{{ gt }}</div><div class="lab">Ground Truth</div></div>
-<div class="item"><div class="val">{{ pred }}</div><div class="lab">Top-1 Prediction</div></div>
-<div class="item"><div class="val" style="color:{% if match==1 %}#16a34a{% elif match>0 %}#d97706{% else %}#dc2626{% endif %}">{{ "%.2f"|format(match) }}</div><div class="lab">Match Score</div></div>
-</div>
-<div class="grid">{{ cand_html|safe }}</div>
-</div></body></html>"""
-
-
-@app.route("/dmpnn")
-def dmpnn_summary():
-    """D-MPNN scoring results overview."""
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute("""SELECT complex_id, metal, oxidation_state, donor_atoms_gt, 
-        top1_donor_pred, match_score, n_candidates
-        FROM dmpnn_summary ORDER BY match_score DESC, complex_id""")
-    rows = cur.fetchall()
-    conn.close()
-    
-    def match_color(m):
-        if m == 1.0: return '#16a34a'
-        elif m > 0: return '#d97706'
-        return '#dc2626'
-    
-    def match_badge(m):
-        c = match_color(m)
-        return f'<span style="background:{c};color:#fff;padding:.2rem .6rem;border-radius:4px;font-weight:600">{m:.2f}</span>'
-    
-    cards = ''
-    for cid, metal, ox, gt, pred, match, nc in rows:
-        cards += f'''<div class="card" style="border-left:4px solid {match_color(match)}">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-        <div>
-        <a href="/complexes/{cid}"><b>#{cid}</b></a> {metal}({ox}) — {nc} candidates
-        <div style="margin-top:.3rem;font-size:.85rem">
-        <span style="color:#64748b">Ground truth:</span> <code>{gt}</code>
-        <span style="color:#64748b;margin-left:.5rem">Top-1:</span> <code>{pred}</code>
-        </div></div>
-        <div>{match_badge(match)}</div></div>
-        <a href="/dmpnn/{cid}" style="display:inline-block;margin-top:.5rem;font-size:.8rem;color:#3b82f6">View candidates →</a></div>'''
-    
-    n_match = sum(1 for r in rows if r[5] == 1.0)
-    n_partial = sum(1 for r in rows if 0 < r[5] < 1.0)
-    n_fail = sum(1 for r in rows if r[5] == 0.0)
-    avg = sum(r[5] for r in rows) / len(rows) if rows else 0
-    
-    return render_template_string(DMPNN_PAGE, cards=cards, total=len(rows),
-        n_match=n_match, n_partial=n_partial, n_fail=n_fail, avg=avg)
-
-
-@app.route("/dmpnn/<int:cid>")
-def dmpnn_detail(cid):
-    """D-MPNN scoring detail: candidates with rendered structures."""
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute("""SELECT metal, oxidation_state, donor_atoms_gt, top1_donor_pred, match_score, n_candidates
-        FROM dmpnn_summary WHERE complex_id=?""", (cid,))
-    summ = cur.fetchone()
-    if not summ:
-        conn.close(); abort(404)
-    
-    cur.execute("""SELECT rank, candidate_smi, metal_ox, is_top1 
-        FROM dmpnn_results WHERE complex_id=? ORDER BY rank""", (cid,))
-    candidates = cur.fetchall()
-    conn.close()
-    
-    metal, ox, gt, pred, match, nc = summ
-    
-    # Render each candidate
-    cand_html = ''
-    for rank, smi, m_ox, is_top1 in candidates:
-        mol = Chem.MolFromSmiles(smi, sanitize=False)
-        img_b64 = None
-        if mol:
-            try:
-                AllChem.Compute2DCoords(mol)
-                drawer = Draw.MolDraw2DCairo(380, 280)
-                drawer.drawOptions().addStereoAnnotation = True
-                drawer.drawOptions().bondLineWidth = 2
-                drawer.DrawMolecule(mol)
-                drawer.FinishDrawing()
-                img_b64 = base64.b64encode(drawer.GetDrawingText()).decode()
-            except:
-                pass
-        
-        border = '#16a34a' if is_top1 else '#e2e8f0'
-        badge = '<span style="background:#16a34a;color:#fff;padding:.1rem .4rem;border-radius:3px;font-size:.75rem">TOP-1</span>' if is_top1 else ''
-        
-        cand_html += f'''<div class="cand" style="border:2px solid {border}">
-        <div style="font-size:.8rem;color:#64748b;margin-bottom:.3rem">#{rank} {badge}</div>
-        {'<img src="data:image/png;base64,' + img_b64 + '">' if img_b64 else '<div style="color:#94a3b8;text-align:center;padding:2rem">Render failed</div>'}
-        <div class="smi">{smi[:80]}{'...' if len(smi)>80 else ''}</div></div>'''
-    
-    return render_template_string(DMPNN_DETAIL_PAGE, cid=cid, metal=metal, ox=ox,
-        gt=gt, pred=pred, match=match, nc=nc, cand_html=cand_html)
+# D-MPNN routes moved to dmpnn_routes.py (registered above via register_dmpnn_routes)
 
 
 @app.route("/backup")
@@ -496,6 +283,7 @@ def backup_status():
         f"{l.rstrip()}</div>" for l in log_lines)
 
     return f"""<!DOCTYPE html><html><head><meta charset="utf-8">
+<link rel="icon" href="/static/favicon.ico" type="image/x-icon">
 <title>NAS Backup — Hermes</title>
 <style>
 body{{font-family:'Inter',-apple-system,sans-serif;margin:0;background:#0f172a;color:#e2e8f0}}
@@ -549,6 +337,7 @@ a{{color:#60a5fa;text-decoration:none}}a:hover{{text-decoration:underline}}
 def index():
     n_mols = len([f for f in os.listdir(MOL_DIR) if f.endswith(".mol")])
     return f"""<html><head><title>BiometalDB</title>
+    <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
     <style>body{{font-family:sans-serif;max-width:600px;margin:40px auto;padding:0 1rem}}
     a{{color:#2563eb;text-decoration:none}}a:hover{{text-decoration:underline}}</style></head>
     <body><h2>BiometalDB MOL Server</h2><p>{n_mols} MOLfiles available.</p>

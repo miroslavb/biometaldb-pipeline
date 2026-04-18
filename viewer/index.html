@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<link rel="icon" href="/static/favicon.ico" type="image/x-icon">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BiometalDB — 3D MOL Viewer</title>
 <script src="https://3Dmol.org/build/3Dmol-min.js"></script>
@@ -240,11 +241,15 @@ async function selectComplex(c) {
     return;
   }
 
-  // Fetch and render
+  // Fetch and render — try candidate SMILES (with coordination bonds) first
   document.getElementById('molviewer').innerHTML = '<div class="loading"><span class="spinner">⏳</span> Loading structure...</div>';
 
   try {
-    const res = await fetch(MOL_SERVER + '/mol3/' + c.complex_id + '/view');
+    let res = await fetch(MOL_SERVER + '/mol3/' + c.complex_id + '/candidate');
+    if (!res.ok) {
+      // Fallback to raw MOL file
+      res = await fetch(MOL_SERVER + '/mol3/' + c.complex_id + '/view');
+    }
     const molData = await res.text();
 
     // Clear and reinit viewer
@@ -319,7 +324,21 @@ listEl.addEventListener('scroll', () => {
 
 // Init — load first page only
 initViewer();
-loadPage(true);
+loadPage(true).then(() => {
+  // Auto-select complex if ?id=xxx in URL
+  const urlId = new URLSearchParams(location.search).get('id');
+  if (urlId) {
+    // Search for this specific complex
+    document.getElementById('searchInput').value = '#' + urlId;
+    loadPage(true).then(() => {
+      const item = document.querySelector(`.item[data-id="${urlId}"]`);
+      if (item) {
+        item.click();
+        item.scrollIntoView({ block: 'center' });
+      }
+    });
+  }
+});
 </script>
 </body>
 </html>

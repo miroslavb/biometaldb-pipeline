@@ -21,6 +21,7 @@ DATA_DIR = os.path.join(APP_DIR, "data")
 DB_PATH = os.path.join(DATA_DIR, "biometaldb.sqlite")
 MOL_DIR = os.path.join(DATA_DIR, "mol")
 MOL3_DIR = os.path.join(DATA_DIR, "mol3")
+FAVICON_PATH = os.path.join(APP_DIR, "favicon_64.png")
 
 # Add patches to path
 sys.path.insert(0, os.path.join(APP_DIR, "patches"))
@@ -29,7 +30,7 @@ from selfies_metal import selfies_to_smiles_metal
 # Page config
 st.set_page_config(
     page_title="MetalCytoToxDB",
-    page_icon="⚗️",
+    page_icon=FAVICON_PATH,
     layout="wide",
     initial_sidebar_state="expanded",
 )
