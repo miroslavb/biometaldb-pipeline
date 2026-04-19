@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<title>[Ir(L1)2(L2)]3+ — 3D Viewer</title>
+<script src="https://3Dmol.org/build/3Dmol-min.js"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#0d1117;font-family:system-ui,sans-serif;color:#c9d1d9}
+.hdr{background:linear-gradient(135deg,#0f172a,#1e3a5f);color:#fff;padding:1rem 2rem}
+.hdr h1{margin:0;font-size:1.3rem}
+.hdr .info{color:#94a3b8;font-size:.85rem;margin-top:.3rem}
+#viewer{width:100%;height:85vh;position:relative}
+.controls{position:absolute;top:10px;right:10px;z-index:10;display:flex;gap:6px}
+button{padding:6px 12px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:#c9d1d9;cursor:pointer;font-size:12px}
+button:hover{background:#30363d}
+</style></head>
+<body>
+<div class="hdr">
+<h1>[Ir(L₁)₂(L₂)]³⁺ — Ir(III), октаэдр</h1>
+<div class="info">L₁: циклометаллирующий C^N (×2) | L₂: N^N бидентатный | 6 доноров: 2C + 4N | GFN1 (без оптимизации Ir)</div>
+</div>
+<div id="viewer">
+<div class="controls">
+<button onclick="v.setStyle({},stick);v.render()">Stick</button>
+<button onclick="v.setStyle({},bs);v.render()">Ball+Stick</button>
+<button onclick="v.setStyle({},sphere);v.render()">Spacefill</button>
+<button onclick="v.spin(!v.spinState)">Spin</button>
+</div>
+</div>
+<script>
+let stick={stick:{radius:0.1,colorscheme:'Jmol'}};
+let bs={sphere:{scale:0.25},stick:{radius:0.06,colorscheme:'Jmol'}};
+let sphere={sphere:{colorscheme:'Jmol'}};
+let v=$3Dmol.createViewer("viewer",{backgroundColor:"#0d1117"});
+fetch("/viewer/Ir_L1L2.xyz").then(r=>r.text()).then(xyz=>{
+  v.addModel(xyz,"xyz");
+  v.setStyle({elem:'Ir'},{sphere:{scale:0.5,color:'gold'}});
+  v.setStyle({not:{elem:'Ir'}},stick);
+  v.zoomTo();
+  v.render();
+});
+</script></body></html>

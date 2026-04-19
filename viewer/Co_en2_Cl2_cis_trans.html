@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<title>[Co(en)2Cl2]+ — cis/trans</title>
+<script src="https://3Dmol.org/build/3Dmol-min.js"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#0d1117;font-family:system-ui,sans-serif;color:#c9d1d9}
+.hdr{background:linear-gradient(135deg,#0f172a,#1e3a5f);color:#fff;padding:1rem 2rem}
+.hdr h1{margin:0;font-size:1.3rem}
+.row{display:flex;padding:1rem;gap:1rem;height:calc(100vh - 80px)}
+.col{flex:1;display:flex;flex-direction:column;background:#161b22;border-radius:8px;overflow:hidden}
+.bar{padding:.6rem 1rem;background:#21262d;font-weight:600;font-size:.85rem;
+  border-bottom:1px solid #30363d;display:flex;justify-content:space-between;align-items:center}
+.bar span{color:#58a6ff}
+.vwrap{flex:1;position:relative;min-height:0}
+.vwrap canvas{display:block}
+button{padding:4px 10px;background:#21262d;border:1px solid #30363d;border-radius:4px;
+  color:#c9d1d9;cursor:pointer;font-size:11px}
+button:hover{background:#30363d}
+</style></head>
+<body>
+<div class="hdr"><h1>[Co(en)₂Cl₂]⁺ — cis и trans изомеры</h1></div>
+<div class="row">
+  <div class="col">
+    <div class="bar"><span>cis</span> (Cl рядом, кольца в одну сторону)
+      <div><button onclick="vc.setStyle({},stick);vc.render()">Stick</button>
+      <button onclick="vc.setStyle({},bs);vc.render()">Ball+Stick</button>
+      <button onclick="vc.spin(!vc.spinState)">Spin</button></div></div>
+    <div class="vwrap" id="cis"></div>
+  </div>
+  <div class="col">
+    <div class="bar"><span>trans</span> (Cl напротив, кольца в разные стороны)
+      <div><button onclick="vt.setStyle({},stick);vt.render()">Stick</button>
+      <button onclick="vt.setStyle({},bs);vt.render()">Ball+Stick</button>
+      <button onclick="vt.spin(!vt.spinState)">Spin</button></div></div>
+    <div class="vwrap" id="trans"></div>
+  </div>
+</div>
+<script>
+let stick={stick:{radius:0.12,colorscheme:'Jmol'}};
+let bs={sphere:{scale:0.3},stick:{radius:0.08,colorscheme:'Jmol'}};
+let vc=$3Dmol.createViewer("cis",{backgroundColor:"#0d1117"});
+let vt=$3Dmol.createViewer("trans",{backgroundColor:"#0d1117"});
+fetch("/viewer/cis_Co_en2_Cl2.xyz").then(r=>r.text()).then(x=>{
+  vc.addModel(x,"xyz");vc.setStyle({},stick);vc.zoomTo();vc.render();
+});
+fetch("/viewer/trans_Co_en2_Cl2.xyz").then(r=>r.text()).then(x=>{
+  vt.addModel(x,"xyz");vt.setStyle({},stick);vt.zoomTo();vt.render();
+});
+</script></body></html>
