@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Complex #4820 — TUCAN v2</title>
+<script src="https://3Dmol.org/build/3Dmol-min.js"></script>
+<style>
+  body { margin: 0; background: #1a1a2e; color: #eee; font-family: 'Segoe UI', system-ui, sans-serif; }
+  #viewer { width: 100%; height: 85vh; position: relative; }
+  .info { padding: 12px 20px; background: #16213e; font-size: 14px; line-height: 1.6; }
+  .info b { color: #4fc3f7; }
+  .badge { display: inline-block; background: #0f3460; border-radius: 4px; padding: 2px 8px; margin: 2px; font-size: 13px; }
+  .badge.n { background: #1b5e20; }
+  .badge.ru { background: #b71c1c; }
+</style>
+</head>
+<body>
+<div class="info">
+  <b>Complex #4820</b> — [Ru(bpy)₂(phen-dioxo)]²⁺<br>
+  <b>TUCAN v2:</b> C₃₄H₂₆N₆O₂Ru₁ · 69 atoms · 79 edges<br>
+  <b>Ru</b> node #11 → neighbors: <span class="badge n">N8</span> <span class="badge n">N13</span> <span class="badge n">N14</span> <span class="badge n">N15</span> <span class="badge n">N16</span> <span class="badge n">N17</span><br>
+  <b>Source:</b> regenerated TUCAN with explicit H + metal-donor bonds
+</div>
+<div id="viewer"></div>
+<script>
+const xyzData = `69
+Complex #4820 TUCAN v2
+PLACEHOLDER`;
+
+const $v = $3Dmol.createViewer("viewer", {
+  backgroundColor: '#1a1a2e',
+  antialias: true
+});
+
+// Load from file
+$.ajax({ url: '../data/3d_structures/ru_4820_tucan_v2.xyz', dataType: 'text' })
+.done(function(data) {
+  $v.addModel(data, "xyz");
+  $v.setStyle({}, {stick: {radius: 0.15, colorscheme: 'Jmol'}, sphere: {scale: 0.25, colorscheme: 'Jmol'}});
+  // Highlight Ru
+  $v.setStyle({elem: 'Ru'}, {sphere: {scale: 0.5, color: '#ff5252'}, stick: {color: '#ff5252', radius: 0.2}});
+  // Highlight N donors
+  $v.setStyle({elem: 'N'}, {sphere: {scale: 0.35, color: '#4caf50'}, stick: {color: '#4caf50'}});
+  $v.zoomTo();
+  $v.render();
+})
+.fail(function() {
+  // Fallback: inline data
+  const lines = document.querySelector('script:not([src])').textContent;
+  $v.addModel(lines, "xyz");
+  $v.setStyle({}, {stick: {radius: 0.15}, sphere: {scale: 0.25}});
+  $v.zoomTo();
+  $v.render();
+});
+</script>
+</body>
+</html>
