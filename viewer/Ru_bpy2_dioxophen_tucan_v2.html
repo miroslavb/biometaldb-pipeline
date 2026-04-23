@@ -1,16 +1,43 @@
 <!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>#4820 [Ru(bpy)₂(dioxo-phen)]²⁺</title>
 <script src="https://3Dmol.org/build/3Dmol-min.js"></script>
-<style>body{margin:0;background:#1a1a2e;color:#eee;font-family:system-ui}#v{width:100%;height:85vh}.info{padding:12px 20px;background:#16213e;font-size:13px}.ok{color:#4caf50}</style>
-</head><body><div class="info"><b>#4820</b> [Ru(bpy)₂(dioxo-phen)]²⁺ — <span class="ok">g-xTB tight</span><br>
-69 atoms (34C + 26H + 6N + 2O + Ru), 79 bonds · Ru-N: ~2.05 Å · E = −113.890 Eh</div>
-<div id="v"></div><script>
-const v=$3Dmol.createViewer("v",{backgroundColor:'#1a1a2e'});
-fetch("/viewer/Ru_bpy2_dioxophen_tucan_v2.mol").then(r=>r.text()).then(mol=>{
-  v.addModel(mol,"sdf");
-  v.setStyle({},{stick:{radius:0.15,colorscheme:'Jmol'},sphere:{scale:0.3,colorscheme:'Jmol'}});
-  v.setStyle({elem:'Ru'},{sphere:{scale:0.6,color:'#ff5252'}});
-  v.setStyle({elem:'N'},{sphere:{scale:0.4,color:'#4caf50'}});
-  v.zoomTo();v.render();
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#1a1a2e;font-family:system-ui,sans-serif;color:#eee}
+.hdr{background:#16213e;padding:12px 20px}
+.hdr h1{margin:0;font-size:1.2rem}
+.hdr .info{color:#94a3b8;font-size:.85rem;margin-top:.3rem}
+#viewer{width:100%;height:85vh;position:relative}
+.controls{position:absolute;top:10px;right:10px;z-index:10;display:flex;gap:6px}
+button{padding:6px 12px;background:#21262d;border:1px solid #30363d;border-radius:4px;color:#c9d1d9;cursor:pointer;font-size:12px}
+button:hover{background:#30363d}
+.ok{color:#4caf50}
+</style></head>
+<body>
+<div class="hdr">
+<h1>#4820 [Ru(bpy)₂(dioxo-phen)]²⁺ — <span class="ok">g-xTB tight</span></h1>
+<div class="info">69 atoms (34C + 26H + 6N + 2O + Ru), 79 bonds · Ru-N: ~2.05 Å · E = −113.890 Eh</div>
+</div>
+<div id="viewer">
+<div class="controls">
+<button onclick="v.setStyle({},stick);v.render()">Stick</button>
+<button onclick="v.setStyle({},bs);v.render()">Ball+Stick</button>
+<button onclick="v.setStyle({},sphere);v.render()">Spacefill</button>
+<button onclick="v.spin(!v.spinState)">Spin</button>
+</div>
+</div>
+<script>
+let stick={stick:{radius:0.1,colorscheme:'Jmol'}};
+let bs={sphere:{scale:0.25},stick:{radius:0.06,colorscheme:'Jmol'}};
+let sphere={sphere:{colorscheme:'Jmol'}};
+let v=$3Dmol.createViewer("viewer",{backgroundColor:"#1a1a2e"});
+fetch("/viewer/Ru_bpy2_dioxophen_tucan.xyz").then(r=>r.text()).then(xyz=>{
+  v.addModel(xyz,"xyz");
+  v.setStyle({elem:'Ru'},{sphere:{scale:0.5,color:'#E8C872'}});
+  v.setStyle({elem:'N'},{sphere:{scale:0.3,color:'#3050F8'},stick:{radius:0.08}});
+  v.setStyle({elem:'O'},{sphere:{scale:0.3,color:'#FF0D0D'},stick:{radius:0.08}});
+  v.setStyle({not:{elem:'Ru,N,O'}},stick);
+  v.zoomTo();
+  v.render();
 });
 </script></body></html>
