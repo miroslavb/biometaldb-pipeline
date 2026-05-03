@@ -6,6 +6,7 @@ import os
 import json
 import sqlite3
 import base64
+import psycopg2
 from flask import request, render_template_string, abort, send_file, Response
 from rdkit import Chem
 from rdkit.Chem import AllChem, Draw
@@ -60,7 +61,7 @@ code{background:#f1f5f9;padding:.1rem .3rem;border-radius:3px;font-size:.82rem}
 COMPLEXES_LIST = """<!DOCTYPE html><html><head><meta charset="utf-8">
 <title>Complexes — BiometalDB</title>
 """ + COMPLEXES_CSS + """</head><body>
-<div class="hdr"><div><a href="/">home</a><a href="/complexes" style="color:#93c5fd;font-weight:600">complexes</a><a href="/dmpnn">D-MPNN</a></div>
+<div class="hdr"><div><a href="/">home</a><a href="/complexes" style="color:#93c5fd;font-weight:600">complexes</a><a href="/complexes/cell-death-heatmap">cell death map</a><a href="/dmpnn">D-MPNN</a></div>
 <h1>Coordination Complexes</h1>
 <div class="sub">{{ total }} complexes in database</div></div>
 <div class="wrap">
@@ -191,6 +192,14 @@ COMPLEXES_DETAIL = """<!DOCTYPE html><html><head><meta charset="utf-8">
 <td>{{ m[0] or '—' }}</td><td>{{ '%.2g'|format(m[1]) if m[1] else '—' }}</td><td>{{ '%.2g'|format(m[2]) if m[2] else '—' }}</td>
 <td>{% if m[3] %}<a href="https://doi.org/{{ m[3] }}">{{ m[3][:30] }}{% if m[3]|length>30 %}...{% endif %}</a>{% else %}—{% endif %}</td>
 <td>{{ m[4] or '—' }}</td></tr>{% endfor %}</table></div>{% endif %}
+{% if death_types %}
+<div class=\"card mt\" style=\"margin-top:1rem\"><h2 style=\"font-size:1rem;color:#1e40af;margin:0 0 .8rem;border-bottom:2px solid #e2e8f0;padding-bottom:.4rem\">🧬 Cell Death Types ({{ death_types|length }})</h2>
+{% for dt in death_types %}
+<div style=\"margin:6px 0;padding:8px 12px;background:#f8fafc;border-left:3px solid {% if dt.confidence=='high' %}#16a34a{% elif dt.confidence=='medium' %}#f59e0b{% else %}#94a3b8{% endif %};border-radius:4px;font-size:.85em\">
+<span style=\"font-weight:600;color:#1e40af\">{{ dt.type|replace('_',' ')|title }}</span>
+<span style=\"font-size:.75em;color:{% if dt.confidence=='high' %}#16a34a{% elif dt.confidence=='medium' %}#f59e0b{% else %}#94a3b8{% endif %};margin-left:6px\">{{ dt.confidence }}</span>
+{% if dt.evidence %}<div style=\"color:#475569;margin-top:2px;font-size:.8em\">«{{ dt.evidence[:200] }}{% if dt.evidence|length>200 %}...{% endif %}»</div>{% endif %}
+</div>{% endfor %}</div>{% endif %}
 </div></div>
 {% if has_3d %}
 <div class="viewer3d">
@@ -265,6 +274,27 @@ def has_3d_structure(cid):
     """Check if 3D structure files exist for this complex."""
     return any(os.path.exists(os.path.join(STRUCT3D_DIR, f"ir_{cid}.{ext}"))
                for ext in ['sdf', 'pdb'])
+
+
+def get_cell_death_types(complex_id):
+    """Fetch cell death classifications from PostgreSQL for a complex."""
+    try:
+        pg = psycopg2.connect("dbname=article_archive user=postgres host=/var/run/postgresql")
+        cur = pg.cursor()
+        cur.execute("""
+            SELECT DISTINCT ON (llm.death_type) llm.death_type, llm.confidence, llm.evidence_snippet
+            FROM llm_cell_death_classifications llm
+            JOIN biometaldb_links bl ON bl.article_id = llm.article_id
+            WHERE bl.complex_id = %s AND llm.complex_id IS NOT NULL
+            ORDER BY llm.death_type, 
+                CASE llm.confidence WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END
+        """, (complex_id,))
+        rows = cur.fetchall()
+        pg.close()
+        return [{"type": r[0], "confidence": r[1], "evidence": r[2]} for r in rows]
+    except Exception as e:
+        print(f"Cell death lookup error for complex {complex_id}: {e}")
+        return []
 
 
 def register_complexes_routes(app):
@@ -426,6 +456,8 @@ def register_complexes_routes(app):
         meas = cur.fetchall()
         conn.close()
 
+        death_types = get_cell_death_types(cid)
+
         img = render_2d(cid)
         has_mol3 = os.path.exists(os.path.join(MOL3_DIR, f"complex_{cid}.mol"))
         has_3d = has_3d_structure(cid)
@@ -433,7 +465,246 @@ def register_complexes_routes(app):
         return render_template_string(COMPLEXES_DETAIL,
             cid=cid, metal=metal, ox=ox, charge=charge, donors=donors,
             smi=smi, tucan=tucan, abbr=abbr[0] if abbr else None,
-            img=img, meas=meas, has_mol3=has_mol3, has_3d=has_3d)
+            img=img, meas=meas, death_types=death_types, has_mol3=has_mol3, has_3d=has_3d)
+
+    # ─── Cell Death Heatmap ──────────────────────────────────────────────────
+    @app.route("/api/cell-death-complexes")
+    def api_cell_death_complexes():
+        metal = request.args.get('metal', '')
+        death_type = request.args.get('death_type', '')
+        if not metal or not death_type:
+            return {"error": "metal and death_type required"}, 400
+
+        # Map display name back to DB key
+        death_type_db = death_type.lower().replace(' ', '_')
+
+        sql_db = sqlite3.connect(DB_PATH)
+        cid_info = {r[0]: (r[1], r[2], r[3]) for r in sql_db.execute(
+            "SELECT id, metal, oxidation_state, smiles_ligands FROM complexes")}
+        sql_db.close()
+
+        pg = psycopg2.connect("dbname=article_archive user=postgres")
+        cur = pg.cursor()
+        cur.execute("""
+            SELECT DISTINCT ON (bl.complex_id) 
+                bl.complex_id, llm.confidence, llm.evidence_snippet, a.title, a.doi
+            FROM biometaldb_links bl
+            JOIN llm_cell_death_classifications llm ON llm.article_id = bl.article_id
+            JOIN articles a ON a.id = llm.article_id
+            WHERE llm.death_type = %s AND llm.complex_id IS NOT NULL
+            ORDER BY bl.complex_id, 
+                CASE llm.confidence WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END
+        """, (death_type_db,))
+        rows = cur.fetchall()
+        pg.close()
+
+        # Filter by metal from SQLite
+        result = []
+        for cid, conf, evidence, title, doi in rows:
+            info = cid_info.get(cid)
+            if not info or info[0] != metal:
+                continue
+            result.append({
+                "complex_id": cid,
+                "metal": info[0],
+                "oxidation_state": info[1],
+                "smiles": (info[2][:100] + '...') if info[2] and len(info[2]) > 100 else (info[2] or ''),
+                "confidence": conf,
+                "evidence": (evidence[:150] + '...') if evidence and len(evidence) > 150 else (evidence or ''),
+                "title": (title[:120] + '...') if title and len(title) > 120 else (title or ''),
+                "doi": doi or '',
+            })
+
+        return {"metal": metal, "death_type": death_type, "count": len(result), "complexes": result}
+
+    @app.route("/complexes/cell-death-heatmap")
+    def cell_death_heatmap():
+        import plotly.graph_objects as go
+        import plotly.utils
+        from collections import defaultdict, Counter
+
+        # Gather data: metal → death_type → count
+        sql_db = sqlite3.connect(DB_PATH)
+        cid_metal = dict(sql_db.execute("SELECT id, metal FROM complexes").fetchall())
+        sql_db.close()
+
+        pg = psycopg2.connect("dbname=article_archive user=postgres")
+        cur = pg.cursor()
+        cur.execute("""
+            SELECT bl.complex_id, llm.death_type
+            FROM biometaldb_links bl
+            JOIN llm_cell_death_classifications llm ON llm.article_id = bl.article_id
+            WHERE llm.complex_id IS NOT NULL
+        """)
+        rows = cur.fetchall()
+        pg.close()
+
+        metal_death = defaultdict(Counter)
+        for cid, dt in rows:
+            metal = cid_metal.get(cid, "Unknown")
+            metal_death[metal][dt] += 1
+
+        metals = sorted(metal_death.keys())
+        all_types = sorted(set(dt for m in metal_death for dt in metal_death[m]))
+
+        # Build matrix with log scale for better color differentiation
+        import math
+        z = []
+        hover_text = []
+        for dt in all_types:
+            row = []
+            ht_row = []
+            for m in metals:
+                cnt = metal_death[m].get(dt, 0)
+                row.append(math.log10(cnt + 1))  # log scale: 0→0, 10→1.04, 100→2, 1000→3, 2082→3.32
+                total_m = sum(metal_death[m].values())
+                pct = (cnt / total_m * 100) if total_m > 0 else 0
+                ht_row.append(f"<b>{dt.replace('_',' ').title()}</b><br>Metal: {m}<br>Count: {cnt}<br>% of {m}: {pct:.1f}%")
+            z.append(row)
+            hover_text.append(ht_row)
+
+        # Log-scale tick values and labels for colorbar
+        log_max = max(max(row) for row in z)
+        tick_vals = []
+        tick_text = []
+        for v in [0, 1, 2, 3, 5, 10, 20, 50, 100, 200, 500, 1000, 2000]:
+            log_v = math.log10(v + 1)
+            if log_v <= log_max + 0.1:
+                tick_vals.append(log_v)
+                tick_text.append(str(v))
+
+        fig = go.Figure(data=go.Heatmap(
+            z=z,
+            x=metals,
+            y=[dt.replace('_', ' ').title() for dt in all_types],
+            text=hover_text,
+            hoverinfo='text',
+            colorscale='YlOrRd',
+            colorbar=dict(
+                title='Complexes',
+                tickvals=tick_vals,
+                ticktext=tick_text,
+            ),
+            xgap=2, ygap=2,
+        ))
+
+        fig.update_layout(
+            title=dict(
+                text='Metal → Cell Death Type Dependence',
+                font=dict(size=18, color='#1e293b'),
+                x=0.5
+            ),
+            xaxis=dict(title='Metal', side='bottom', tickfont=dict(size=13)),
+            yaxis=dict(title='Cell Death Type', tickfont=dict(size=12)),
+            height=550,
+            width=800,
+            margin=dict(l=10, r=10, t=60, b=10),
+            plot_bgcolor='#f8fafc',
+            paper_bgcolor='#f8fafc',
+            font=dict(family='Inter, -apple-system, sans-serif'),
+        )
+
+        heatmap_html = fig.to_html(full_html=False, include_plotlyjs='cdn', config={
+            'displayModeBar': True,
+            'modeBarButtonsToRemove': ['lasso2d', 'select2d'],
+            'displaylogo': False,
+            'responsive': True,
+        })
+
+        page = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>Cell Death Heatmap — BiometalDB</title>
+<link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+<style>
+body{{font-family:'Inter',-apple-system,sans-serif;margin:0;background:#f0f2f5;color:#1e293b}}
+.hdr{{background:linear-gradient(135deg,#0f172a,#1e3a5f);color:#fff;padding:1rem 2rem;border-bottom:3px solid #3b82f6}}
+.hdr h1{{margin:0;font-size:1.4rem}}.hdr a{{color:#60a5fa;text-decoration:none;margin-right:1rem;font-size:.85rem}}
+.wrap{{max-width:900px;margin:1.5rem auto;padding:0 1rem}}
+.card{{background:#fff;border-radius:8px;padding:1.5rem;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:1rem}}
+.stats{{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem}}
+.pill{{background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:.3rem .8rem;font-size:.8rem}}
+.btn{{display:inline-block;padding:.4rem 1rem;border-radius:6px;font-size:.85rem;cursor:pointer;border:none;text-decoration:none;margin-right:.5rem}}
+.bp{{background:#3b82f6;color:#fff}}.bs{{background:#e2e8f0;color:#334155}}
+.results{{display:none;margin-top:1rem}}
+.results.active{{display:block}}
+.result-card{{background:#fff;border-radius:8px;padding:.8rem 1rem;box-shadow:0 1px 3px rgba(0,0,0,.06);margin-bottom:.5rem;display:flex;gap:.8rem;align-items:flex-start}}
+.result-card:hover{{box-shadow:0 2px 6px rgba(0,0,0,.12)}}
+.rc-badge{{flex-shrink:0;padding:.2rem .6rem;border-radius:4px;font-size:.7rem;font-weight:600;text-align:center;min-width:55px}}
+.rc-hi{{background:#dcfce7;color:#166534}}
+.rc-med{{background:#fef3c7;color:#92400e}}
+.rc-lo{{background:#f1f5f9;color:#475569}}
+.rc-info{{flex:1;min-width:0}}
+.rc-info a{{color:#2563eb;text-decoration:none;font-weight:600;font-size:.9rem}}
+.rc-info a:hover{{text-decoration:underline}}
+.rc-ev{{color:#64748b;font-size:.78rem;margin-top:2px}}
+.rc-meta{{color:#94a3b8;font-size:.72rem;margin-top:2px}}
+#loading{{display:none;text-align:center;padding:1.5rem;color:#64748b;font-size:.9rem}}
+#sel-info{{display:none;margin:0 0 .8rem;font-size:.9rem;color:#1e40af;font-weight:500}}
+</style></head><body>
+<div class="hdr"><div>
+<a href="/">home</a><a href="/complexes">complexes</a><a href="/complexes/cell-death-heatmap" style="color:#93c5fd;font-weight:600">cell death map</a>
+</div><h1>Metal → Cell Death Type Dependence</h1></div>
+<div class="wrap">
+<div class="card">
+{heatmap_html}
+</div>
+<div class="stats">
+{"".join(f'<span class="pill"><b>{m}</b>: {sum(metal_death[m].values())} links</span>' for m in metals)}
+</div>
+<p style="font-size:.8rem;color:#64748b;text-align:center;margin-top:1rem">
+Color intensity = number of article-complex links where a given cell death type was identified.
+Click any cell to see the list of complexes below.</p>
+<div id="sel-info"></div>
+<div id="loading">Loading complexes...</div>
+<div id="results" class="results"></div>
+</div>
+<script>
+var heatmapEl = document.querySelector('.js-plotly-plot');
+heatmapEl.on('plotly_click', function(data) {{
+    if (!data.points || data.points.length === 0) return;
+    var pt = data.points[0];
+    var metal = pt.x;
+    var deathType = pt.y;
+    document.getElementById('sel-info').style.display = 'block';
+    document.getElementById('sel-info').textContent = 'Metal: ' + metal + ' | Cell death: ' + deathType;
+    document.getElementById('loading').style.display = 'block';
+    document.getElementById('results').classList.remove('active');
+    document.getElementById('results').innerHTML = '';
+    
+    fetch('/api/cell-death-complexes?metal=' + encodeURIComponent(metal) + '&death_type=' + encodeURIComponent(deathType))
+        .then(function(r) {{ return r.json(); }})
+        .then(function(data) {{
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('sel-info').textContent = 
+                'Metal: ' + metal + ' | Cell death: ' + deathType + ' | Complexes: ' + data.count;
+            if (!data.complexes || data.complexes.length === 0) {{
+                document.getElementById('results').innerHTML = '<p style="color:#94a3b8;padding:1rem">No complexes found.</p>';
+                document.getElementById('results').classList.add('active');
+                return;
+            }}
+            var html = '';
+            data.complexes.forEach(function(c) {{
+                var badgeCls = c.confidence === 'high' ? 'rc-hi' : (c.confidence === 'medium' ? 'rc-med' : 'rc-lo');
+                html += '<div class="result-card">' +
+                    '<div class="rc-badge ' + badgeCls + '">' + c.confidence + '</div>' +
+                    '<div class="rc-info">' +
+                    '<a href="/complexes/' + c.complex_id + '">Complex #' + c.complex_id + ' (' + c.metal + (c.oxidation_state ? ' ' + c.oxidation_state : '') + ')</a>' +
+                    (c.evidence ? '<div class="rc-ev">\u00ab' + c.evidence + '\u00bb</div>' : '') +
+                    (c.title ? '<div class="rc-meta">' + c.title + '</div>' : '') +
+                    '</div></div>';
+            }});
+            document.getElementById('results').innerHTML = html;
+            document.getElementById('results').classList.add('active');
+            document.getElementById('results').scrollIntoView({{behavior: 'smooth', block: 'start'}});
+        }})
+        .catch(function(err) {{
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('results').innerHTML = '<p style="color:#ef4444;padding:1rem">Error loading complexes.</p>';
+            document.getElementById('results').classList.add('active');
+        }});
+}});
+</script>
+</body></html>"""
+        return page
 
     # ─── 3D Structure download routes ─────────────────────────────────────
     @app.route("/structures/<int:cid>/sdf")
