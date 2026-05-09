@@ -489,7 +489,7 @@ def register_complexes_routes(app):
             SELECT DISTINCT ON (bl.complex_id) 
                 bl.complex_id, llm.confidence, llm.evidence_snippet, a.title, a.doi
             FROM biometaldb_links bl
-            JOIN llm_cell_death_classifications llm ON llm.complex_id = bl.complex_id
+            JOIN llm_cell_death_classifications llm ON llm.complex_id = bl.complex_id AND llm.article_id = bl.article_id
             JOIN articles a ON a.id = llm.article_id
             WHERE llm.death_type = %s
             ORDER BY bl.complex_id, 
@@ -533,7 +533,7 @@ def register_complexes_routes(app):
         cur.execute("""
             SELECT bl.complex_id, llm.death_type
             FROM biometaldb_links bl
-            JOIN llm_cell_death_classifications llm ON llm.complex_id = bl.complex_id
+            JOIN llm_cell_death_classifications llm ON llm.complex_id = bl.complex_id AND llm.article_id = bl.article_id
         """)
         rows = cur.fetchall()
         pg.close()
