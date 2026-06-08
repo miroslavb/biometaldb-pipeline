@@ -247,18 +247,39 @@ def metal_color(m):
     return colors.get(m, '#94a3b8')
 
 
-def render_2d(cid):
-    """Render MOL to 2D PNG, return base64 string."""
+def render_2d(cid, smi=None):
+    """Render 2D PNG, return base64 string.
+
+    Order:
+      1. Try pre-generated MOL file on disk (data/mol3/complex_{cid}.mol).
+      2. Fallback: build mol from SMILES (passed in or fetched from DB).
+         Also persist the .mol next to the others so subsequent loads are fast.
+    """
     mol_path = os.path.join(MOL3_DIR, f"complex_{cid}.mol")
-    if not os.path.exists(mol_path):
+    mol = None
+    if os.path.exists(mol_path):
+        try:
+            mol = Chem.MolFromMolFile(mol_path, sanitize=False, removeHs=False)
+        except Exception:
+            mol = None
+    if mol is None and smi:
+        try:
+            mol = Chem.MolFromSmiles(smi)
+        except Exception:
+            mol = None
+        if mol is not None:
+            # Persist for next request.
+            try:
+                os.makedirs(MOL3_DIR, exist_ok=True)
+                Chem.MolToMolFile(mol, mol_path)
+            except Exception:
+                pass
+    if mol is None:
         return None
     try:
-        mol = Chem.MolFromMolFile(mol_path, sanitize=False, removeHs=False)
-        if mol is None:
-            return None
         try:
             AllChem.Compute2DCoords(mol)
-        except:
+        except Exception:
             pass
         drawer = Draw.MolDraw2DCairo(520, 400)
         drawer.drawOptions().addStereoAnnotation = True
@@ -266,7 +287,7 @@ def render_2d(cid):
         drawer.DrawMolecule(mol)
         drawer.FinishDrawing()
         return base64.b64encode(drawer.GetDrawingText()).decode()
-    except:
+    except Exception:
         return None
 
 
@@ -458,7 +479,9 @@ def register_complexes_routes(app):
 
         death_types = get_cell_death_types(cid)
 
-        img = render_2d(cid)
+        # render_2d may write data/mol3/complex_{cid}.mol on SMILES fallback,
+        # so compute has_mol3 AFTER.
+        img = render_2d(cid, smi=smi)
         has_mol3 = os.path.exists(os.path.join(MOL3_DIR, f"complex_{cid}.mol"))
         has_3d = has_3d_structure(cid)
 

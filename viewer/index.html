@@ -252,15 +252,13 @@ async function selectComplex(c) {
     }
     const molData = await res.text();
 
-    // Clear and reinit viewer
-    document.getElementById('molviewer').innerHTML = '';
-    initViewer();
-
+    // Reuse existing viewer — just clear models (avoids destroying WebGL context)
+    viewer.removeAllModels();
+    viewer.removeAllLabels();
     viewer.addModel(molData, 'mol');
     applyStyle(viewer, currentStyle);
     viewer.zoomTo();
     viewer.render();
-    // No auto-spin — user can rotate manually
   } catch(e) {
     document.getElementById('molviewer').innerHTML = '<div class="loading">Failed to load MOL file</div>';
     console.error(e);
