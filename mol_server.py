@@ -345,6 +345,7 @@ def index():
     <li><a href="/complexes">Browse complexes</a> (with 2D structures)</li>
     <li><a href="/dmpnn">📊 D-MPNN Scoring</a> (Ru donor prediction results)</li>
     <li><a href="/viewer/ir100/review.html">🧪 3D Structure Reconstruction</a> — QM-ready geometries (Architector + GFN2-xTB), Λ/Δ enantiomers, TREXIO records, per-compound archives, manual review</li>
+    <li><a href="/viewer/ligands/index.html">🧬 Ligand Library</a> — unique ligands grouped by chemical type (denticity, donors, hemilability, frequency)</li>
     <li><code>GET /mol3/{{id}}</code> — download MOL</li>
     <li><code>GET /complexes/{{id}}</code> — detail view with structure</li>
     </ul>
