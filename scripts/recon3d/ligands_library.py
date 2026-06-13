@@ -21,7 +21,9 @@ GROUP_ORDER = [
     "η6-Arene", "η5-Cyclopentadienyl (Cp/Cp*)", "Carbonyl (CO)",
     "κ²-C,N cyclometalated (anionic, −1)", "Cyclometalated C^N (other)",
     "N-heterocyclic carbene (NHC)",
-    "N,N-chelate (diimine / polypyridyl)", "Polydentate N-donor (≥3)",
+    "κ²-N,N chelate (neutral diimine / polypyridyl)",
+    "κ²-N,N chelate (anionic, −1)", "N,N-chelate (other)",
+    "Polydentate N-donor (≥3)",
     "N-donor (monodentate)", "N,O-donor (Schiff base / amino-acid)",
     "O,O-chelate (β-diketonate / dicarboxylate)", "O-donor (carboxylate/alkoxide)",
     "Phosphine (monodentate)", "Diphosphine (P,P-chelate)", "P,X-mixed donor",
@@ -75,7 +77,16 @@ def classify(canon, mol, pred):
     if nN >= 3:
         return "Polydentate N-donor (≥3)"
     if nN == 2 and nO == 0:
-        return "N,N-chelate (diimine / polypyridyl)"
+        # κ²-N,N bidentate chelators, split by overall ligand charge:
+        #   neutral → diimine / polypyridyl (bipy, phen, en…)
+        #   −1 → anionic N,N (amidinate, β-diketiminate/nacnac, pyridyl-pyrrolide…)
+        if cn == 2 and mol is not None:
+            ch = Chem.GetFormalCharge(mol)
+            if ch == 0:
+                return "κ²-N,N chelate (neutral diimine / polypyridyl)"
+            if ch == -1:
+                return "κ²-N,N chelate (anionic, −1)"
+        return "N,N-chelate (other)"
     if nN >= 1 and nO >= 1:
         return "N,O-donor (Schiff base / amino-acid)"
     if nO >= 2:
