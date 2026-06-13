@@ -19,7 +19,8 @@ _BETADIKET = Chem.MolFromSmarts("[#8]~[#6]~[#6]~[#6]~[#8]")  # 1,5-O,O (β-diket
 
 GROUP_ORDER = [
     "η6-Arene", "η5-Cyclopentadienyl (Cp/Cp*)", "Carbonyl (CO)",
-    "Cyclometalated C^N", "N-heterocyclic carbene (NHC)",
+    "κ²-C,N cyclometalated (anionic, −1)", "Cyclometalated C^N (other)",
+    "N-heterocyclic carbene (NHC)",
     "N,N-chelate (diimine / polypyridyl)", "Polydentate N-donor (≥3)",
     "N-donor (monodentate)", "N,O-donor (Schiff base / amino-acid)",
     "O,O-chelate (β-diketonate / dicarboxylate)", "O-donor (carboxylate/alkoxide)",
@@ -58,7 +59,11 @@ def classify(canon, mol, pred):
         if is_nhc or (mol.HasSubstructMatch(_NHC) and nN >= 1):
             return "N-heterocyclic carbene (NHC)"
         if nN >= 1:
-            return "Cyclometalated C^N"
+            # κ²-C,N anionic cyclometalated (e.g. ppy⁻): exactly one C + one N donor,
+            # bidentate, overall ligand charge −1.
+            if cn == 2 and nC == 1 and nN == 1 and Chem.GetFormalCharge(mol) == -1:
+                return "κ²-C,N cyclometalated (anionic, −1)"
+            return "Cyclometalated C^N (other)"
     if nP >= 2:
         return "Diphosphine (P,P-chelate)"
     if nP == 1 and (nN + nO + nS) == 0:
@@ -89,9 +94,24 @@ def main():
     ap.add_argument("--db", required=True)
     ap.add_argument("--oracle", required=True)
     ap.add_argument("--out", default="out/ligands")
+    ap.add_argument("--reclassify", action="store_true",
+                    help="re-label existing ligands.json (no DB scan, no PNG render)")
     a = ap.parse_args()
     os.makedirs(os.path.join(a.out, "img"), exist_ok=True)
     oracle = json.load(open(a.oracle))
+
+    if a.reclassify:
+        data = json.load(open(os.path.join(a.out, "ligands.json")))
+        for lg in data["ligands"]:
+            c = lg["smiles"]
+            mol = Chem.MolFromSmiles(c, sanitize=True) or Chem.MolFromSmiles(c, sanitize=False)
+            lg["group"] = classify(c, mol, oracle.get(c))
+        gc = Counter(lg["group"] for lg in data["ligands"])
+        data["group_order"] = GROUP_ORDER
+        data["group_counts"] = {g: gc.get(g, 0) for g in GROUP_ORDER if gc.get(g)}
+        json.dump(data, open(os.path.join(a.out, "ligands.json"), "w"))
+        print(f"reclassified {len(data['ligands'])} ligands; groups: {dict(data['group_counts'])}")
+        return
 
     def canon(f):
         m = Chem.MolFromSmiles(f, sanitize=True) or Chem.MolFromSmiles(f, sanitize=False)
