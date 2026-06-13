@@ -27,6 +27,7 @@ class Unit:
     ligType: str = None               # mono | bi_cis | ... (None -> Architector auto)
     sites: int = 0                    # coordination sites occupied (haptic -> 3)
     hkind: str = None                 # 'cp' | 'arene' for haptic ligands
+    oracle: dict = None               # pydentate prediction (if used)
 
 
 @dataclass
@@ -45,6 +46,7 @@ class Assignment:
     flags: list
     spectators: list                  # counterion/unbound fragment smiles
     needs_xtb: bool = False           # haptic present -> UFF insufficient, force xtb
+    hemilabile: bool = False          # any coordinating ligand predicted hemilabile
 
 
 def _mol(smi):
@@ -110,8 +112,9 @@ def _frag_charge(mol):
     return sum(a.GetFormalCharge() for a in mol.GetAtoms())
 
 
-def build_units(metal, ox, smiles_ligands):
+def build_units(metal, ox, smiles_ligands, oracle=None):
     units = []
+    oracle = oracle or {}
     for frag in smiles_ligands.split("."):
         frag = frag.strip()
         if not frag:
@@ -139,14 +142,30 @@ def build_units(metal, ox, smiles_ligands):
             u.pocket = ring
             u.pocket_comp = Counter({"C": len(ring)})
             u.sites = nsites
+        elif canon in oracle and isinstance(oracle[canon], dict) \
+                and oracle[canon].get("coord_atoms") and "error" not in oracle[canon]:
+            # pydentate-predicted coordinating atoms (authoritative for hetero donors)
+            pred = oracle[canon]
+            valid = [i for i in pred["coord_atoms"] if i < mol.GetNumAtoms()]
+            if valid:
+                u.oracle = pred
+                u.pocket = sorted(valid)
+                u.pocket_comp = Counter(mol.GetAtomWithIdx(i).GetSymbol() for i in u.pocket)
+            elif not donors:
+                u.role = "counterion"
         elif not donors:
             u.role = "counterion"   # no donor atoms -> outer sphere
         units.append(u)
     return units
 
 
-def assign(metal, ox, smiles_ligands, donor_atoms):
-    """Return an Assignment. donor_atoms: dict like {'N':5,'P':1} (may be None)."""
+def assign(metal, ox, smiles_ligands, donor_atoms, oracle=None):
+    """Return an Assignment.
+
+    donor_atoms: dict like {'N':5,'P':1} (may be None) — composition cross-check.
+    oracle: optional {canonical_smiles: pydentate_prediction} — authoritative
+    coordinating-atom assignment for heteroatom-donor ligands.
+    """
     flags = []
     metal = metal.strip()
     ox = int(ox) if ox is not None else None
@@ -164,11 +183,11 @@ def assign(metal, ox, smiles_ligands, donor_atoms):
     elif not donor_prior_sane:
         flags.append(f"donor_prior_cn{cn_from_donor}_ne_pref{target_cn}")
 
-    units = build_units(metal, ox, smiles_ligands)
+    units = build_units(metal, ox, smiles_ligands, oracle=oracle)
 
-    # natural pocket for ligand + halide units
+    # natural pocket (SMARTS heuristic) only where the oracle didn't assign one
     for u in units:
-        if u.role in ("ligand", "halide") and u.donors:
+        if u.role in ("ligand", "halide") and u.donors and not u.oracle and not u.pocket:
             u.pocket = _natural_pocket(u.mol, u.donors)
             el = {d[0]: d[1] for d in u.donors}
             u.pocket_comp = Counter(el[i] for i in u.pocket)
@@ -205,10 +224,10 @@ def assign(metal, ox, smiles_ligands, donor_atoms):
         if slots <= 0:
             break
         s = smap(u)
-        pk = sorted(u.pocket, key=lambda i: -s[i][1])
+        pk = sorted(u.pocket, key=lambda i: -s.get(i, ("", 50))[1])
         take = pk[:min(len(pk), slots, dcap)]
         u.pocket = sorted(take)
-        u.pocket_comp = Counter(s[i][0] for i in take)
+        u.pocket_comp = Counter(u.mol.GetAtomWithIdx(i).GetSymbol() for i in take)
         u.sites = len(take)
         u.ligType = {1: "mono", 2: "bi_cis"}.get(len(take))
         selected.append(u)
@@ -234,6 +253,7 @@ def assign(metal, ox, smiles_ligands, donor_atoms):
         final_comp += u.pocket_comp
     final_cn = sum(u.sites for u in final_units)   # site count (haptic ring = 3)
     needs_xtb = bool(haptics)
+    hemilabile = any(u.oracle and u.oracle.get("hemilabile") for u in final_units)
 
     comp_match = bool(target_comp) and (final_comp == target_comp)
     hard_flag = any(f.startswith(("cn_unfilled", "unused", "haptic_no_room")) for f in flags)
@@ -255,4 +275,5 @@ def assign(metal, ox, smiles_ligands, donor_atoms):
         pref_cn=pref_cn, geometry=geometry, spin=spin,
         units=final_units, final_comp=final_comp, final_cn=final_cn,
         confidence=conf, flags=flags, spectators=spectators, needs_xtb=needs_xtb,
+        hemilabile=hemilabile,
     )
