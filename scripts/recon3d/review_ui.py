@@ -58,8 +58,10 @@ def build(out_dir, manifest_path=None):
             vb = (badge("valid", iso.get("valid")) + badge("no-clash", g.get("no_clash")) +
                   badge("bonds", g.get("bond_lengths_ok")))
             tx = iso.get("files", {}).get("trexio", "")
+            txt = iso.get("files", {}).get("trexio_txt", "")
             xyz = iso.get("files", {}).get("xyz", "")
-            dl = (f' · <a href="struct/{tx}" download>TREXIO</a>' if tx else "") + \
+            dl = (f' · <a href="struct/{txt}" target="_blank">TREXIO·txt</a>' if txt else "") + \
+                 (f' · <a href="struct/{tx}" download>TREXIO·h5</a>' if tx else "") + \
                  (f' · <a href="struct/{xyz}" download>xyz</a>' if xyz else "")
             isos += (f'<div class="iso"><div class="ih">{iso["label"]} '
                      f'· E={iso.get("energy")} · q={iso.get("total_charge")} '
