@@ -48,7 +48,7 @@ def _mk_result(conf, method, step):
             "energy": conf.get("energy"), "n_atoms": len(at)}
 
 
-def build_isomers(assignment, mode="xtb", max_isomers=2, _no_fallback=False):
+def build_isomers(assignment, mode="xtb", max_isomers=2, _no_fallback=False, n_conf=6):
     """Build up to `max_isomers` distinct stereoisomers (cis/trans, fac/mer).
 
     Enumerates Architector symmetries (n_conformers), deduplicates by stereo
@@ -74,7 +74,7 @@ def build_isomers(assignment, mode="xtb", max_isomers=2, _no_fallback=False):
         return out
 
     base = dict(metal_ox=assignment.ox, metal_spin=assignment.spin,
-                return_only_1=False, n_conformers=6, n_symmetries=14,
+                return_only_1=False, n_conformers=n_conf, n_symmetries=max(n_conf + 6, 14),
                 save_init_geos=False, debug=False)
     relax = mode == "xtb"
     amethod = "GFN2-xTB" if relax else "UFF"

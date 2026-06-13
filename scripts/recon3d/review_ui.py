@@ -78,6 +78,9 @@ def build(out_dir, manifest_path=None):
                      f'<div class="body"><div class="left"><img loading="lazy" src="{imgsrc}"/>'
                      f'{ligtbl}</div><div class="right">{isos}</div></div>{ctrl}</div>')
 
+    valid_ids = [r["id"] for r in recs if r.get("status") == "ok"
+                 and r.get("isomers") and all(i.get("valid") for i in r["isomers"])]
+    all_ids = [r["id"] for r in recs]
     html = f"""<!doctype html><html><head><meta charset="utf-8">
 <title>BiometalDB Ir — 3D reconstruction review</title>
 <script src="https://3Dmol.org/build/3Dmol-min.js"></script>
@@ -109,6 +112,8 @@ button{{cursor:pointer}}
 </style></head><body>
 <div class="top"><b>BiometalDB Ir(III) — 3D reconstruction · manual review</b>
 &nbsp; {man['n']} complexes · {man['n_isomers_total']} structures · {man['n_valid_struct']} valid
+&nbsp; <button class="acc" onclick="acceptValid()">✓ validate all passing ({len(valid_ids)})</button>
+<button onclick="clearAll()">↺ clear</button>
 <button onclick="exp()">⬇ export reviews</button>
 <span id="cnt"></span></div>
 <div id="list">{''.join(cards)}</div>
@@ -153,7 +158,12 @@ function count(){{let a=0,r=0,f=0; for(k in R){{if(R[k].v=='accept')a++;if(R[k].
   document.getElementById('cnt').textContent=` · ✓${{a}} ✗${{r}} ⚑${{f}}`;}}
 function exp(){{let b=new Blob([JSON.stringify(R,null,2)],{{type:'application/json'}});
   let a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download='ir100_reviews.json'; a.click();}}
-for(let id in {json.dumps({r["id"]: 1 for r in recs})}) paint(id);
+const VALID={json.dumps(valid_ids)};
+const ALLIDS={json.dumps(all_ids)};
+function acceptValid(){{VALID.forEach(id=>{{R[id]=R[id]||{{}};R[id].v='accept';}});save();ALLIDS.forEach(paint);count();}}
+function clearAll(){{if(!confirm('Clear all review marks & notes?'))return;R={{}};save();
+  ALLIDS.forEach(id=>{{let n=document.getElementById('nt_'+id);if(n)n.value='';}});ALLIDS.forEach(paint);count();}}
+ALLIDS.forEach(paint);
 count();
 </script></body></html>"""
     out = os.path.join(out_dir, "review.html")
