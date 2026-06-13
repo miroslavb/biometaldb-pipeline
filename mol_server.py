@@ -344,7 +344,7 @@ def index():
     <ul>
     <li><a href="/complexes">Browse complexes</a> (with 2D structures)</li>
     <li><a href="/dmpnn">📊 D-MPNN Scoring</a> (Ru donor prediction results)</li>
-    <li><a href="/viewer/">🔬 3D MOL Viewer</a> (interactive 3D)</li>
+    <li><a href="/viewer/ir100/review.html">🧪 3D Structure Reconstruction</a> — QM-ready geometries (Architector + GFN2-xTB), Λ/Δ enantiomers, TREXIO records, per-compound archives, manual review</li>
     <li><a href="/backup">💾 NAS Backup</a> — status & logs</li>
     <li><code>GET /mol3/{{id}}</code> — download MOL</li>
     <li><code>GET /complexes/{{id}}</code> — detail view with structure</li>

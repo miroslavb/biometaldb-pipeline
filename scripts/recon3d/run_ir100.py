@@ -98,6 +98,8 @@ def main():
     ap.add_argument("--db", required=True)
     ap.add_argument("--limit", type=int, default=100)
     ap.add_argument("--ids", default="")
+    ap.add_argument("--metal", default="")
+    ap.add_argument("--all", action="store_true", help="all compounds, every metal")
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--timeout", type=int, default=900)
     ap.add_argument("--out", default=OUT)
@@ -110,13 +112,28 @@ def main():
     if args.ids:
         ids = [int(x) for x in args.ids.split(",") if x.strip()]
         rows = con.execute(f"SELECT {cols} FROM complexes WHERE id IN ({','.join('?'*len(ids))})", ids).fetchall()
+    elif args.all:
+        rows = con.execute(f"SELECT {cols} FROM complexes ORDER BY id").fetchall()
+    elif args.metal:
+        rows = con.execute(f"SELECT {cols} FROM complexes WHERE metal=? ORDER BY id", (args.metal,)).fetchall()
     else:
         rows = con.execute(f"SELECT {cols} FROM complexes WHERE metal='Ir' ORDER BY id LIMIT ?",
                            (args.limit,)).fetchall()
     con.close()
-    print(f"[ir100] {len(rows)} complexes", flush=True)
 
-    # 1) precompute pydentate oracle for all unique ligand fragments (once, with torch)
+    # resume: reload already-completed records from the JSONL checkpoint
+    jsonl = os.path.join(args.out, "records.jsonl")
+    done = {}
+    if os.path.exists(jsonl):
+        for line in open(jsonl):
+            try:
+                r = json.loads(line); done[r["id"]] = r
+            except Exception:
+                pass
+    todo = [r for r in rows if r[0] not in done]
+    print(f"[run] {len(rows)} complexes | {len(done)} done | {len(todo)} to build", flush=True)
+
+    # precompute pydentate oracle for all unique ligand fragments (cached -> resumable)
     import coord_oracle as O
     frags = set()
     for r in rows:
@@ -124,35 +141,37 @@ def main():
             f = f.strip()
             if f:
                 frags.add(_canon(f))
-    print(f"[ir100] precomputing oracle for {len(frags)} unique ligands...", flush=True)
+    print(f"[run] precomputing oracle for {len(frags)} unique ligands...", flush=True)
     oracle = O.precompute(sorted(frags), out_path=os.path.join(args.out, "oracle.json"))
 
-    # 2) build (parallel)
-    payloads = [(r[0], r[1], r[2], r[3], r[4], r[5], oracle, args.out) for r in rows]
-    records = []
+    payloads = [(r[0], r[1], r[2], r[3], r[4], r[5], oracle, args.out) for r in todo]
+    jf = open(jsonl, "a")
+    n = len(done)
     with ProcessPoolExecutor(max_workers=args.workers) as ex:
         futs = {ex.submit(work, p): p[0] for p in payloads}
-        done = 0
         for fut in as_completed(futs):
             cid = futs[fut]
             try:
                 rec = fut.result(timeout=args.timeout)
             except Exception as e:  # noqa: BLE001
                 rec = {"id": cid, "status": "timeout_or_crash", "error": str(e)[:120]}
-            records.append(rec)
-            done += 1
-            niso = len(rec.get("isomers", []))
-            print(f"[{done}/{len(rows)}] #{rec['id']} {rec.get('status'):<12} "
-                  f"isomers={niso} hemi={rec.get('hemilabile')} {rec.get('build_s','')}s", flush=True)
+            done[cid] = rec
+            jf.write(json.dumps(rec) + "\n"); jf.flush()
+            n += 1
+            print(f"[{n}/{len(rows)}] #{rec['id']} {rec.get('status'):<12} "
+                  f"isomers={len(rec.get('isomers', []))} {rec.get('build_s','')}s", flush=True)
+    jf.close()
 
-    records.sort(key=lambda r: r["id"])
-    manifest = {"n": len(records), "metal": "Ir",
+    import collections
+    records = sorted(done.values(), key=lambda r: r["id"])
+    manifest = {"n": len(records),
                 "n_ok": sum(1 for r in records if r.get("status") == "ok"),
                 "n_isomers_total": sum(len(r.get("isomers", [])) for r in records),
                 "n_valid_struct": sum(1 for r in records for i in r.get("isomers", []) if i.get("valid")),
+                "by_metal": dict(collections.Counter(r.get("metal") for r in records)),
                 "records": records}
     json.dump(manifest, open(os.path.join(args.out, "manifest.json"), "w"), indent=2)
-    print(f"[ir100] done. ok={manifest['n_ok']}/{manifest['n']} "
+    print(f"[run] done. ok={manifest['n_ok']}/{manifest['n']} "
           f"structures={manifest['n_isomers_total']} valid={manifest['n_valid_struct']}", flush=True)
 
 
