@@ -203,7 +203,7 @@ def assign(metal, ox, smiles_ligands, donor_atoms, oracle=None):
     # order ligands: chelators first, then strongest donor, then larger pocket
     def lig_key(u):
         s = smap(u)
-        maxs = max((s[i][1] for i in u.pocket), default=0)
+        maxs = max((s.get(i, ("", 50))[1] for i in u.pocket), default=0)
         return (-(len(u.pocket) >= 2), -maxs, -len(u.pocket))
     ligands.sort(key=lig_key)
 

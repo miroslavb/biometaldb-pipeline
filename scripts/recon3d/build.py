@@ -71,7 +71,7 @@ def build_isomers(assignment, mode="xtb", max_isomers=2):
         return out
 
     base = dict(metal_ox=assignment.ox, metal_spin=assignment.spin,
-                return_only_1=False, n_conformers=4, n_symmetries=12,
+                return_only_1=False, n_conformers=8, n_symmetries=16,
                 save_init_geos=False, debug=False)
     relax = mode == "xtb"
     amethod = "GFN2-xTB" if relax else "UFF"
