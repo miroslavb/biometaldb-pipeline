@@ -35,9 +35,12 @@ def build(out_dir, manifest_path=None):
         rid = r["id"]
         badge = lambda t, ok: f'<span class="b {"ok" if ok else "no"}">{t}</span>'
         hemi = '<span class="b hemi">hemilabile</span>' if r.get("hemilabile") else ""
+        arc = r.get("archive", "")
+        arclink = (f' · <a class="arc" href="archive/{arc}" download>⬇ archive (.zip)</a>'
+                   if arc else "")
         head = (f'<div class="h"><b>#{rid}</b> {r.get("metal")}({r.get("ox")}) · '
                 f'{r.get("geometry","?")} CN{r.get("cn","?")} · conf={r.get("assign_conf","?")} '
-                f'{hemi} <span class="st {r.get("status")}">{r.get("status")}</span></div>')
+                f'{hemi} <span class="st {r.get("status")}">{r.get("status")}</span>{arclink}</div>')
         # ligand table
         lig_rows = ""
         for L in r.get("ligands", []):
