@@ -20,6 +20,8 @@ _BETADIKET = Chem.MolFromSmarts("[#8]~[#6]~[#6]~[#6]~[#8]")  # 1,5-O,O (β-diket
 GROUP_ORDER = [
     "η6-Arene", "η5-Cyclopentadienyl (Cp/Cp*)", "Carbonyl (CO)",
     "κ²-C,N cyclometalated (anionic, −1)", "Cyclometalated C^N (other)",
+    "κ²-C,C bis-carbene chelate (neutral)",
+    "κ²-C,N carbene chelate (neutral)",
     "N-heterocyclic carbene (NHC)",
     "κ²-N,N chelate (neutral diimine / polypyridyl)",
     "κ²-N,N chelate (anionic, −1)", "N,N-chelate (other)",
@@ -55,10 +57,18 @@ def classify(canon, mol, pred):
     cn = pred.get("cn", sum(syms.values()))
     if nC >= 1 and mol is not None:
         c_idx = [pred["coord_atoms"][i] for i, s in enumerate(pred["syms"]) if s == "C"]
-        is_nhc = any(mol.GetAtomWithIdx(i).GetTotalNumHs() == 0 and
-                     sum(1 for nb in mol.GetAtomWithIdx(i).GetNeighbors() if nb.GetSymbol() == "N") >= 2
-                     for i in c_idx if i < mol.GetNumAtoms())
+        carbene_c = [i for i in c_idx if i < mol.GetNumAtoms()
+                     and mol.GetAtomWithIdx(i).GetTotalNumHs() == 0
+                     and sum(1 for nb in mol.GetAtomWithIdx(i).GetNeighbors()
+                             if nb.GetSymbol() == "N") >= 2]
+        is_nhc = bool(carbene_c)
         if is_nhc or (mol.HasSubstructMatch(_NHC) and nN >= 1):
+            # neutral bidentate carbene chelators: pull out κ²-C,C and κ²-C,N
+            if cn == 2 and Chem.GetFormalCharge(mol) == 0:
+                if nC == 2:
+                    return "κ²-C,C bis-carbene chelate (neutral)"
+                if nC == 1 and nN == 1:
+                    return "κ²-C,N carbene chelate (neutral)"
             return "N-heterocyclic carbene (NHC)"
         if nN >= 1:
             # κ²-C,N anionic cyclometalated (e.g. ppy⁻): exactly one C + one N donor,
