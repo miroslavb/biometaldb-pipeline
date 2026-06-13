@@ -19,17 +19,16 @@ def _b64png(path):
 def build(out_dir, manifest_path=None):
     man = json.load(open(manifest_path or os.path.join(out_dir, "manifest.json")))
     recs = man["records"]
+    # Light page: reference images (img/) and 3D structures (struct/) by filename
+    # and load them from the server on demand, instead of embedding (4.2MB -> ~0.2MB).
     struct, imgs = {}, {}
     for r in recs:
         if r.get("png"):
-            imgs[r["id"]] = _b64png(os.path.join(out_dir, "img", r["png"]))
+            imgs[r["id"]] = r["png"]
         for iso in r.get("isomers", []):
             mol2 = iso.get("files", {}).get("mol2")
             if mol2:
-                try:
-                    struct[f"{r['id']}_{iso['label']}"] = open(os.path.join(out_dir, "struct", mol2)).read()
-                except Exception:
-                    pass
+                struct[f"{r['id']}_{iso['label']}"] = mol2
 
     cards = []
     for r in recs:
@@ -65,8 +64,8 @@ def build(out_dir, manifest_path=None):
             isos += (f'<div class="iso"><div class="ih">{iso["label"]} '
                      f'· E={iso.get("energy")} · q={iso.get("total_charge")} '
                      f'· mult={iso.get("mult")} {vb}{dl}</div>'
-                     f'<div class="v" id="v_{key}"></div>'
-                     f'<button onclick="show3d(\'{key}\')">⬢ 3D</button></div>')
+                     f'<div class="v" id="v_{key}" data-key="{key}" '
+                     f'onclick="show3d(\'{key}\')"><span class="hint">⬢ 3D</span></div></div>')
         ctrl = (f'<div class="ctrl" data-id="{rid}">review: '
                 f'<button class="acc" onclick="setv({rid},\'accept\')">✓ accept</button>'
                 f'<button class="rej" onclick="setv({rid},\'reject\')">✗ reject</button>'
@@ -74,8 +73,9 @@ def build(out_dir, manifest_path=None):
                 f'<span class="rv" id="rv_{rid}"></span>'
                 f'<input class="note" id="nt_{rid}" placeholder="notes..." '
                 f'oninput="note({rid})"></div>')
+        imgsrc = f'img/{imgs[rid]}' if rid in imgs else ''
         cards.append(f'<div class="card" id="card_{rid}">{head}'
-                     f'<div class="body"><div class="left"><img src="{imgs.get(rid,"")}"/>'
+                     f'<div class="body"><div class="left"><img loading="lazy" src="{imgsrc}"/>'
                      f'{ligtbl}</div><div class="right">{isos}</div></div>{ctrl}</div>')
 
     html = f"""<!doctype html><html><head><meta charset="utf-8">
@@ -86,12 +86,13 @@ body{{font-family:system-ui,sans-serif;margin:0;background:#0f172a;color:#e2e8f0
 .top{{position:sticky;top:0;background:#1e293b;padding:10px 16px;border-bottom:2px solid #6366f1;z-index:10}}
 .top b{{font-size:1.1rem}} .top button{{margin-left:8px}}
 .card{{background:#1e293b;margin:12px;border-radius:8px;padding:10px 14px;border-left:4px solid #475569}}
-.h{{font-size:1rem;margin-bottom:6px}} .body{{display:flex;gap:14px}}
-.left{{flex:0 0 540px}} .left img{{width:540px;background:#fff;border-radius:4px}}
-.right{{flex:1;display:flex;gap:10px;flex-wrap:wrap}}
-.iso{{background:#0f172a;border-radius:6px;padding:6px;width:330px}}
-.ih{{font-size:.78rem;color:#cbd5e1;margin-bottom:4px}}
-.v{{width:316px;height:300px;position:relative;background:#020617;border-radius:4px}}
+.h{{font-size:1rem;margin-bottom:6px}} .body{{display:flex;gap:14px;align-items:flex-start}}
+.left{{flex:0 0 280px}} .left img{{width:280px;background:#fff;border-radius:4px}}
+.right{{flex:1;display:flex;gap:12px;flex-wrap:wrap}}
+.iso{{background:#0f172a;border-radius:6px;padding:6px;width:560px;max-width:100%}}
+.ih{{font-size:.82rem;color:#cbd5e1;margin-bottom:4px}}
+.v{{width:548px;max-width:100%;height:460px;position:relative;background:#020617;border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center}}
+.v .hint{{color:#64748b;font-size:1.4rem;letter-spacing:1px}}
 .lt{{font-size:.7rem;border-collapse:collapse;margin-top:6px;width:100%}}
 .lt th,.lt td{{border:1px solid #334155;padding:2px 4px;text-align:left}}
 .smi{{font-family:monospace;color:#93c5fd}}
@@ -114,15 +115,33 @@ button{{cursor:pointer}}
 <script>
 const STRUCT={json.dumps(struct)};
 const inited={{}};
+const VIEW={{}};
 function show3d(key){{
   if(inited[key])return; inited[key]=1;
   let el=document.getElementById('v_'+key);
-  let v=$3Dmol.createViewer(el,{{backgroundColor:'#020617'}});
-  v.addModel(STRUCT[key],'mol2');
-  v.setStyle({{}},{{stick:{{radius:0.13}},sphere:{{scale:0.25}}}});
-  v.setStyle({{elem:['Ir','Ru','Os','Rh','Re','Au']}},{{sphere:{{scale:0.45,color:'gold'}}}});
-  v.zoomTo(); v.render();
+  el.innerHTML='<span class="hint">loading 3D…</span>';
+  fetch('struct/'+STRUCT[key]).then(r=>r.text()).then(mol2=>{{
+    el.innerHTML='';
+    let v=$3Dmol.createViewer(el,{{backgroundColor:'#020617'}});
+    v.addModel(mol2,'mol2');
+    v.setStyle({{}},{{stick:{{radius:0.14}},sphere:{{scale:0.27}}}});
+    v.setStyle({{elem:['Ir','Ru','Os','Rh','Re','Au']}},{{sphere:{{scale:0.5,color:'gold'}}}});
+    v.zoomTo(); v.render(); VIEW[key]=v;
+  }}).catch(e=>{{inited[key]=0; el.innerHTML='<span class="hint">3D load failed</span>';}});
 }}
+function dispose(key){{
+  if(VIEW[key]){{ try{{VIEW[key].clear();}}catch(e){{}} delete VIEW[key]; }}
+  inited[key]=0;
+  let el=document.getElementById('v_'+key);
+  if(el) el.innerHTML='<span class="hint">⬢ 3D</span>';
+}}
+// Auto-load viewers in/near the viewport; dispose off-screen ones to stay under
+// the browser WebGL-context limit (~16). rootMargin preloads just ahead of scroll.
+let io=new IntersectionObserver((ents)=>{{ents.forEach(e=>{{
+  let k=e.target.dataset.key; if(!k) return;
+  if(e.isIntersecting) show3d(k); else dispose(k);
+}});}},{{rootMargin:'300px 0px'}});
+document.querySelectorAll('.v').forEach(el=>io.observe(el));
 let R=JSON.parse(localStorage.getItem('ir100_review')||'{{}}');
 function paint(id){{let s=R[id]&&R[id].v||''; let e=document.getElementById('rv_'+id);
   e.textContent=s?('→ '+s):''; e.style.color=s=='accept'?'#22c55e':s=='reject'?'#ef4444':'#f59e0b';

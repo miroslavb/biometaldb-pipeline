@@ -48,17 +48,20 @@ def _mk_result(conf, method, step):
             "energy": conf.get("energy"), "n_atoms": len(at)}
 
 
-def build_isomers(assignment, mode="xtb", max_isomers=2):
+def build_isomers(assignment, mode="xtb", max_isomers=2, _no_fallback=False):
     """Build up to `max_isomers` distinct stereoisomers (cis/trans, fac/mer).
 
     Enumerates Architector symmetries (n_conformers), deduplicates by stereo
     signature, keeps the lowest-energy representative per distinct isomer.
+    If the xtb assembly yields nothing (crowded complexes Architector can't place
+    under xtb, e.g. (C^N)2 + diphosphine), falls back to the more permissive UFF
+    assembly so a usable QM-input geometry is still produced.
     Returns a list of result dicts (each with 'isomer' label), or [] on failure.
     """
     from architector import build_complex
     if not assignment.units:
         return []
-    if getattr(assignment, "needs_xtb", False):
+    if getattr(assignment, "needs_xtb", False) and not _no_fallback:
         mode = "xtb"
 
     def ligs(with_lt):
@@ -71,7 +74,7 @@ def build_isomers(assignment, mode="xtb", max_isomers=2):
         return out
 
     base = dict(metal_ox=assignment.ox, metal_spin=assignment.spin,
-                return_only_1=False, n_conformers=8, n_symmetries=16,
+                return_only_1=False, n_conformers=6, n_symmetries=14,
                 save_init_geos=False, debug=False)
     relax = mode == "xtb"
     amethod = "GFN2-xTB" if relax else "UFF"
@@ -104,6 +107,12 @@ def build_isomers(assignment, mode="xtb", max_isomers=2):
         kept.append(r)
         if len(kept) >= max_isomers:
             break
+    # fallback: crowded complexes Architector can't place under xtb -> try UFF
+    if not kept and mode == "xtb" and not _no_fallback:
+        fb = build_isomers(assignment, mode="fast", max_isomers=max_isomers, _no_fallback=True)
+        for r in fb:
+            r["method"] = (r.get("method") or "UFF") + "+fallback"
+        return fb
     # label
     if len(kept) == 1:
         kept[0]["isomer"] = "only"
