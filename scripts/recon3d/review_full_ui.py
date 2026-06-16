@@ -245,10 +245,11 @@ function cardHTML(r){
     const dl = (iso.txt?` · <a href="struct/${esc(iso.txt)}" target="_blank">TREXIO·txt</a>`:'')+
       (iso.h5?` · <a href="struct/${esc(iso.h5)}" download>·h5</a>`:'')+
       (iso.xyz?` · <a href="struct/${esc(iso.xyz)}" download>xyz</a>`:'');
-    const has3d = iso.mol2 ? `data-mol2="${esc(iso.mol2)}" onclick="show3d('${esc(key)}')"` : '';
+    const sf = iso.mol2 || iso.xyz, fmt = iso.mol2 ? 'mol2' : 'xyz';
+    const has3d = sf ? `data-struct="${esc(sf)}" data-fmt="${fmt}" onclick="show3d('${esc(key)}')"` : '';
     isos += `<div class="iso"><div class="ih">${esc(iso.label)} · E=${esc(iso.energy)} · q=${esc(iso.q)} · mult=${esc(iso.mult)} ${vb}${dl}</div>`+
       `<div class="v" id="v_${esc(key)}" data-key="${esc(key)}" ${has3d}>`+
-      `<span class="hint">${iso.mol2?'⬢ 3D':'no structure'}</span></div></div>`;
+      `<span class="hint">${sf?'⬢ 3D':'no structure'}</span></div></div>`;
   }
   const ctrl = `<div class="ctrl" data-id="${r.id}">review: `+
     `<button class="acc" onclick="setv(${r.id},'accept')">✓ accept</button>`+
@@ -269,14 +270,15 @@ let io = new IntersectionObserver(ents=>{ents.forEach(e=>{
 
 function show3d(key){
   const el=document.getElementById('v_'+key); if(!el || el.dataset.inited) return;
-  const mol2=el.dataset.mol2; if(!mol2) return;
+  const sf=el.dataset.struct; if(!sf) return;
+  const fmt=el.dataset.fmt||'mol2';
   el.dataset.inited='1'; el.innerHTML='<span class="hint">loading 3D…</span>';
-  fetch('struct/'+mol2).then(r=>r.text()).then(txt=>{
+  fetch('struct/'+sf).then(r=>r.text()).then(txt=>{
     el.innerHTML='';
     const v=$3Dmol.createViewer(el,{backgroundColor:'#020617'});
-    v.addModel(txt,'mol2');
+    v.addModel(txt,fmt);
     v.setStyle({},{stick:{radius:0.14},sphere:{scale:0.27}});
-    v.setStyle({elem:['Ir','Ru','Os','Rh','Re','Au']},{sphere:{scale:0.5,color:'gold'}});
+    v.setStyle({elem:['Ir','Ru','Os','Rh','Re','Au','Ti','Fe','Co']},{sphere:{scale:0.5,color:'gold'}});
     v.zoomTo(); v.render(); VIEW[key]=v;
   }).catch(()=>{el.dataset.inited='';el.innerHTML='<span class="hint">3D load failed</span>';});
 }

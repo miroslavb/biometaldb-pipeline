@@ -35,6 +35,65 @@ _R_INTERNAL = {("Ti", "C"): 2.37, ("Ti", "O"): 2.05, ("Ti", "Cl"): 2.30,
 
 
 # --------------------------------------------------------------------------- #
+def _xtb_cli_opt(syms, pos, charge, uhf, constraints, method="gfn2",
+                 fc=1.5, maxcycle=300, timeout=700):
+    """Native xtb CLI optimisation with HARMONIC distance constraints ($constrain
+    force constant) — a soft spring on each metal-coordination distance, NOT a hard
+    freeze, so the optimiser can relieve inter-fragment clashes while the sandwich
+    and the core sphere are held (the XPD 'strong-restrain, don't freeze' recipe).
+    Returns (syms, positions, energy) or None."""
+    import os
+    import shutil
+    import subprocess
+    import tempfile
+    xtb_bin = shutil.which("xtb") or "/root/biometaldb-3d/arch-env/bin/xtb"
+    d = tempfile.mkdtemp(prefix="xtbpoly_")
+    try:
+        with open(os.path.join(d, "in.xyz"), "w") as f:
+            f.write(f"{len(syms)}\n\n")
+            for s, p in zip(syms, pos):
+                f.write(f"{s} {p[0]:.6f} {p[1]:.6f} {p[2]:.6f}\n")
+        with open(os.path.join(d, "xc.inp"), "w") as f:
+            f.write("$constrain\n")
+            f.write(f"  force constant={fc}\n")
+            for i, j, r0 in constraints:
+                f.write(f"  distance: {i + 1}, {j + 1}, {r0:.3f}\n")
+            f.write("$end\n")
+            f.write(f"$opt\n  maxcycle={maxcycle}\n$end\n")
+        cmd = [xtb_bin, "in.xyz", "--opt", "loose", "--input", "xc.inp",
+               "--chrg", str(int(charge)), "--uhf", str(int(uhf)),
+               "--etemp", "1500"]
+        cmd += ["--gfnff"] if method == "gfnff" else ["--gfn", "2"]
+        env = dict(os.environ, OMP_NUM_THREADS="6", OMP_STACKSIZE="4G")
+        subprocess.run(cmd, cwd=d, capture_output=True, text=True,
+                       timeout=timeout, env=env)
+        outxyz = os.path.join(d, "xtbopt.xyz")
+        if not os.path.exists(outxyz):
+            return None
+        lines = open(outxyz).read().splitlines()
+        n = int(lines[0])
+        energy = None
+        try:
+            for tok in lines[1].replace("energy:", " ").split():
+                try:
+                    energy = float(tok)
+                    break
+                except ValueError:
+                    continue
+        except Exception:  # noqa: BLE001
+            pass
+        rs, rp = [], []
+        for ln in lines[2:2 + n]:
+            q = ln.split()
+            rs.append(q[0])
+            rp.append([float(q[1]), float(q[2]), float(q[3])])
+        return rs, np.array(rp), (energy * 27.2114 if energy is not None else 0.0)
+    except Exception:  # noqa: BLE001
+        return None
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def _embed(mol, seed=1):
     mh = Chem.AddHs(mol)
     p = AllChem.ETKDGv3()
@@ -42,7 +101,7 @@ def _embed(mol, seed=1):
     p.useRandomCoords = True
     p.maxIterations = 4000
     if AllChem.EmbedMolecule(mh, p) != 0:
-        if AllChem.EmbedMolecule(mh, useRandomCoords=True, maxIterations=8000,
+        if AllChem.EmbedMolecule(mh, useRandomCoords=True, maxAttempts=50,
                                  randomSeed=seed + 17) != 0:
             return None
     try:
@@ -302,35 +361,21 @@ def _build_once(metal, ox, smiles_ligands, cn=None, charge=None,
     if charge is None:
         charge = tot_charge + (ox or 0)     # core metal contributes +ox
 
-    # constrained relax: freeze every metal-coordination distance. Two stages —
-    # GFN-FF (robust, declashes the organic parts) then GFN2-xTB with a warm
-    # electronic temperature (SCF for Ti(IV)/Fe(II)+Au(I) d-systems is fragile).
-    from ase import Atoms
-    from ase.optimize import LBFGS
-    from ase.constraints import FixBondLengths
-    from xtb.ase.calculator import XTB
-
-    at = Atoms(symbols=all_sym, positions=all_pos)
-    pairs = [(i, j) for i, j, _ in core_bonds + internal_bonds]
-    at.set_constraint(FixBondLengths(pairs))
-    try:
-        # stage 1: GFN-FF pre-relax (constraints hold every metal shell)
-        try:
-            at.calc = XTB(method="GFN-FF", charge=int(charge), uhf=int(uhf))
-            LBFGS(at, logfile=None).run(fmax=0.5, steps=200)
-        except Exception:  # noqa: BLE001
-            pass
-        # stage 2: GFN2-xTB constrained, warm Fermi smearing for SCF stability
-        at.calc = XTB(method="GFN2-xTB", charge=int(charge), uhf=int(uhf),
-                      electronic_temperature=1500.0, accuracy=2.0, max_iterations=350)
-        LBFGS(at, logfile=None).run(fmax=0.18, steps=relax_steps)
-        energy = float(at.get_potential_energy())
-    except Exception as e:  # noqa: BLE001
-        return {"status": "failed", "error": f"xtb relax: {type(e).__name__} {str(e)[:120]}",
+    # constrained relax via native xtb CLI with HARMONIC distance restraints
+    # (soft springs on every metal-coordination distance — relieves clashes while
+    # holding both the core sphere and the metallocene sandwich). Two stages:
+    # GFN-FF (robust declash) then GFN2 (warm etemp for the d-system SCF).
+    constraints = core_bonds + internal_bonds
+    ff = _xtb_cli_opt(all_sym, all_pos, charge, uhf, constraints,
+                      method="gfnff", fc=1.0, maxcycle=250)
+    if ff is not None:
+        all_sym, all_pos = ff[0], ff[1]
+    res = _xtb_cli_opt(all_sym, all_pos, charge, uhf, constraints,
+                       method="gfn2", fc=1.5, maxcycle=relax_steps)
+    if res is None:
+        return {"status": "failed", "error": "xtb CLI constrained opt produced no geometry",
                 "seed_min_dist": round(float(seed_min), 2)}
-
-    syms = at.get_chemical_symbols()
-    pos = at.get_positions()
+    syms, pos, energy = res
     return {"status": "ok", "method": "GFN2-xTB(constrained)+poly", "symbols": syms,
             "positions": np.asarray(pos), "n_atoms": len(syms),
             "total_charge": int(charge), "n_unpaired": int(uhf), "energy": energy,
