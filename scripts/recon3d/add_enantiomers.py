@@ -58,6 +58,10 @@ def main():
     for r in man["records"]:
         if r.get("status") != "ok":
             continue
+        # idempotent: skip records already enantiomer-enriched (Λ/Δ or flagged)
+        if any(i.get("enantiomer") or str(i.get("label", "")).endswith(("Λ", "Δ"))
+               for i in r.get("isomers", [])):
+            continue
         extra = []
         for iso in list(r["isomers"]):
             if iso["label"].endswith("Δ") or iso.get("enantiomer"):

@@ -9,7 +9,8 @@ Run (on hive or locally, inside arch-env):
 """
 from __future__ import annotations
 import argparse, json, os, sqlite3, time, traceback
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, as_completed, wait, FIRST_COMPLETED
+from concurrent.futures.process import BrokenProcessPool
 
 from rdkit import Chem
 from rdkit.Chem import Draw, AllChem
@@ -93,6 +94,145 @@ def work(args):
     return rec
 
 
+def _kill_pool(ex):
+    """Force-kill all worker processes of a (possibly hung) pool. shutdown() alone
+    will NOT terminate a worker stuck in native code (xtb/Architector), so we kill
+    the OS processes directly before tearing the executor down."""
+    for proc in list(getattr(ex, "_processes", {}).values()):
+        try:
+            proc.kill()
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _fast_pass(remaining, workers, timeout, sink, drop):
+    """Sliding-window pool over `remaining` (≤ `workers` tasks outstanding, so one
+    bad complex can't implicate thousands). Each completed record is sink()'d and
+    drop()'d immediately. Returns (suspects, problem):
+      problem = None  -> drained cleanly
+      problem = 'crash' -> a worker died (BrokenProcessPool)
+      problem = 'stall' -> no task completed within `timeout`s => a worker is hung
+    `suspects` = the cids still in-flight when the problem hit (bounded by window).
+    """
+    ex = ProcessPoolExecutor(max_workers=workers, max_tasks_per_child=25)
+    it = iter(list(remaining))
+    inflight = {}  # fut -> cid
+    problem = None
+
+    def _submit_next():
+        """Submit the next item. Returns False on iterator exhaustion OR a broken
+        pool. ex.submit() itself raises BrokenProcessPool once a worker has died,
+        so it MUST be guarded exactly like fut.result()/wait() — not doing so was
+        the crash at the priming/refill submit sites."""
+        nonlocal problem
+        p = next(it, None)
+        if p is None:
+            return False
+        try:
+            inflight[ex.submit(work, p)] = p[0]
+        except BrokenProcessPool:
+            problem = "crash"
+            return False
+        return True
+
+    try:
+        for _ in range(workers):               # prime the window
+            if not _submit_next():
+                break
+        while inflight and problem is None:
+            done, _pending = wait(list(inflight), timeout=timeout,
+                                  return_when=FIRST_COMPLETED)
+            if not done:                       # nothing finished in `timeout`s -> hang
+                problem = "stall"
+                _kill_pool(ex)
+                break
+            for fut in done:
+                cid = inflight.pop(fut)
+                try:
+                    rec = fut.result()
+                except BrokenProcessPool:
+                    problem = "crash"
+                    inflight[fut] = cid   # retain the culprit as a suspect to isolate
+                    break                 # (else a lone crashing task livelocks)
+                except Exception as e:  # noqa: BLE001
+                    rec = {"id": cid, "status": "timeout_or_crash", "error": str(e)[:160]}
+                sink(rec)
+                drop(cid)
+                _submit_next()                 # refill; sets problem='crash' if pool broke
+                if problem:
+                    break
+    finally:
+        ex.shutdown(wait=False, cancel_futures=True)
+    return list(inflight.values()), problem
+
+
+def _isolate(suspects, payload_by_cid, timeout, sink, drop):
+    """Re-run each suspect ALONE with a hard deadline; quarantine crash/hang culprits.
+    workers=1 + max_tasks_per_child=1 => the one in-flight task IS the culprit, so a
+    hang or crash is attributed exactly (no collateral)."""
+    print(f"[resilient] isolating {len(suspects)} suspect(s) "
+          f"(workers=1, deadline={timeout}s)", flush=True)
+    for cid in suspects:
+        p = payload_by_cid.get(cid)
+        if p is None:
+            continue
+        ex = ProcessPoolExecutor(max_workers=1, max_tasks_per_child=1)
+        fut = ex.submit(work, p)
+        done, _ = wait([fut], timeout=timeout)
+        if not done:                           # this exact complex hangs
+            _kill_pool(ex)
+            sink({"id": cid, "status": "crash_quarantine",
+                  "error": f"isolated: hang > {timeout}s (native xtb/Architector loop); quarantined"})
+        else:
+            try:
+                rec = fut.result()
+            except BrokenProcessPool:
+                rec = {"id": cid, "status": "crash_quarantine",
+                       "error": "isolated: worker crash (segfault/abort); quarantined"}
+            except Exception as e:  # noqa: BLE001
+                rec = {"id": cid, "status": "timeout_or_crash", "error": str(e)[:160]}
+            sink(rec)
+        drop(cid)
+        ex.shutdown(wait=False, cancel_futures=True)
+
+
+def run_resilient(payloads, workers, timeout, sink):
+    """Crash- AND hang-resilient pool runner.
+
+    The first fix survived worker *crashes* (BrokenProcessPool) but not *hangs*:
+    a complex whose native xtb/Architector build loops forever never completes,
+    so the pool waits on it indefinitely (the 6,124 freeze). Here a fast
+    sliding-window pass keeps the other workers busy; when it can make no progress
+    within `timeout`s (stall) or a worker dies (crash), we tear the pool down
+    (force-killing hung children) and isolate ONLY the in-flight suspects
+    one-at-a-time with a hard deadline to pinpoint+quarantine the culprit. Repeats
+    until every complex is built, failed, or quarantined.
+    """
+    payload_by_cid = {p[0]: p for p in payloads}
+    state = {"remaining": list(payloads)}
+
+    def drop(cid):
+        state["remaining"] = [p for p in state["remaining"] if p[0] != cid]
+
+    while state["remaining"]:
+        before = len(state["remaining"])
+        suspects, problem = _fast_pass(state["remaining"], workers, timeout, sink, drop)
+        if problem is None:
+            break
+        print(f"[resilient] {problem}: {len(state['remaining'])} left, "
+              f"{len(suspects)} suspect(s) to isolate", flush=True)
+        if suspects:
+            _isolate(suspects, payload_by_cid, timeout, sink, drop)
+        elif len(state["remaining"]) == before:
+            # crash/stall left no isolatable suspect AND nothing drained: the head
+            # item is the culprit; force-quarantine it so we can't livelock on it.
+            stuck = state["remaining"][0][0]
+            print(f"[resilient] no-progress guard -> force-quarantine #{stuck}", flush=True)
+            sink({"id": stuck, "status": "crash_quarantine",
+                  "error": "force-quarantined: worker crashed with no isolatable suspect"})
+            drop(stuck)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", required=True)
@@ -101,7 +241,7 @@ def main():
     ap.add_argument("--metal", default="")
     ap.add_argument("--all", action="store_true", help="all compounds, every metal")
     ap.add_argument("--workers", type=int, default=8)
-    ap.add_argument("--timeout", type=int, default=900)
+    ap.add_argument("--timeout", type=int, default=600)  # stall/hang deadline (tail tasks ≤~140s)
     ap.add_argument("--out", default=OUT)
     args = ap.parse_args()
     os.makedirs(os.path.join(args.out, "struct"), exist_ok=True)
@@ -146,20 +286,17 @@ def main():
 
     payloads = [(r[0], r[1], r[2], r[3], r[4], r[5], oracle, args.out) for r in todo]
     jf = open(jsonl, "a")
-    n = len(done)
-    with ProcessPoolExecutor(max_workers=args.workers) as ex:
-        futs = {ex.submit(work, p): p[0] for p in payloads}
-        for fut in as_completed(futs):
-            cid = futs[fut]
-            try:
-                rec = fut.result(timeout=args.timeout)
-            except Exception as e:  # noqa: BLE001
-                rec = {"id": cid, "status": "timeout_or_crash", "error": str(e)[:120]}
-            done[cid] = rec
-            jf.write(json.dumps(rec) + "\n"); jf.flush()
-            n += 1
-            print(f"[{n}/{len(rows)}] #{rec['id']} {rec.get('status'):<12} "
-                  f"isomers={len(rec.get('isomers', []))} {rec.get('build_s','')}s", flush=True)
+    total = len(rows)
+    counter = {"n": len(done)}
+
+    def sink(rec):
+        done[rec["id"]] = rec
+        jf.write(json.dumps(rec) + "\n"); jf.flush()
+        counter["n"] += 1
+        print(f"[{counter['n']}/{total}] #{rec['id']} {rec.get('status'):<16} "
+              f"isomers={len(rec.get('isomers', []))} {rec.get('build_s','')}s", flush=True)
+
+    run_resilient(payloads, args.workers, args.timeout, sink)
     jf.close()
 
     import collections

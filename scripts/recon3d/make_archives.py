@@ -16,6 +16,8 @@ man = json.load(open(os.path.join(OUT, "manifest.json")))
 n = 0
 for r in man["records"]:
     cid = r["id"]
+    if r.get("archive") and os.path.exists(os.path.join(ARC, r["archive"])):
+        continue  # idempotent: already archived
     root = f"complex_{cid}"
     files = []
     for iso in r.get("isomers", []):

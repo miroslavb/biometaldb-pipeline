@@ -18,6 +18,8 @@ man = json.load(open(os.path.join(OUT, "manifest.json")))
 cnt = 0
 for r in man["records"]:
     for iso in r.get("isomers", []):
+        if iso.get("files", {}).get("trexio_txt"):
+            continue  # idempotent: already written
         xyzf = iso.get("files", {}).get("xyz")
         if not xyzf or not os.path.exists(os.path.join(STRUCT, xyzf)):
             continue
