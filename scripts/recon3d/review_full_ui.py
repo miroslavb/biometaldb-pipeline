@@ -19,7 +19,7 @@ from __future__ import annotations
 import argparse, json, os
 
 
-def _light_record(r):
+def _light_record(r, trex_lookup=None):
     """Trim a full manifest record down to what the review card needs."""
     ligs = []
     for L in r.get("ligands", []):
@@ -54,7 +54,7 @@ def _light_record(r):
             "txt": f.get("trexio_txt"),
         })
     rm = r.get("retry_meta") or {}
-    return {
+    rec = {
         "id": r.get("id"),
         "metal": r.get("metal"),
         "ox": r.get("ox"),
@@ -76,11 +76,20 @@ def _light_record(r):
         "fail_flags": r.get("fail_flags") or [],
         "recovered_by": rm.get("recovered_by"),
     }
+    # Attach T-REX string if available
+    if trex_lookup:
+        trex_entry = trex_lookup.get(str(r["id"]))
+        if trex_entry:
+            rec["trex"] = trex_entry.get("trex", "")[:200]
+    return rec
 
 
 def build(out_dir, manifest_path=None):
     man = json.load(open(manifest_path or os.path.join(out_dir, "manifest.json")))
-    recs = [_light_record(r) for r in man["records"]]
+    # Load T-REX lookup
+    trex_path = os.path.join(out_dir, "trex.json")
+    trex_lookup = json.load(open(trex_path)) if os.path.exists(trex_path) else {}
+    recs = [_light_record(r, trex_lookup) for r in man["records"]]
     recs.sort(key=lambda r: (r["metal"] or "", r["id"] or 0))
 
     # summary by metal/status for the filter chips + headline
@@ -146,6 +155,10 @@ body{font-family:system-ui,sans-serif;margin:0;background:#0f172a;color:#e2e8f0}
 .lt{font-size:.7rem;border-collapse:collapse;margin-top:6px;width:100%}
 .lt th,.lt td{border:1px solid #334155;padding:2px 4px;text-align:left}
 .smi{font-family:monospace;color:#93c5fd}
+.trex{font-family:monospace;font-size:.65rem;color:#a5b4fc;margin-top:6px;padding:4px 6px;background:#0f172a;border-radius:4px;word-break:break-all;line-height:1.35;max-height:4.1em;overflow:hidden;position:relative;cursor:pointer}
+.trex.expanded{max-height:none}
+.trex::after{content:'▾';position:absolute;right:4px;bottom:0;color:#6366f1;font-size:.7rem}
+.trex.expanded::after{content:'▴'}
 .b{font-size:.68rem;padding:1px 6px;border-radius:3px;margin-left:4px}
 .b.ok{background:#166534}.b.no{background:#7f1d1d}.b.hemi{background:#7c2d12}
 .st{font-size:.7rem;padding:1px 6px;border-radius:3px;background:#334155}.st.ok{background:#166534}
@@ -238,6 +251,7 @@ function cardHTML(r){
       `<td>${L.hemi?('hemi p='+esc(L.hemi_prob)+' '):''}${L.prob!=null?('p='+esc(L.prob)):''}</td></tr>`;
   }
   const ligtbl = `<table class="lt"><tr><th>ligand</th><th>role</th><th>via</th><th>sites</th><th>donors</th><th>pydentate</th></tr>${ligrows}</table>`;
+  const trexdiv = r.trex ? `<div class="trex" onclick="this.classList.toggle('expanded')" title="click to expand">T-REX: ${esc(r.trex)}</div>` : '';
   let isos='';
   for(const iso of (r.isomers||[])){
     const key = r.id+'__'+iso.label;
@@ -260,7 +274,7 @@ function cardHTML(r){
   const img = r.png ? `<img loading="lazy" src="img/${esc(r.png)}"/>` : '<div style="color:#64748b">no depiction</div>';
   const right = isos || reasonHTML(r);
   return `<div class="card ${esc(r.status)}" id="card_${r.id}">${head}`+
-    `<div class="body"><div class="left">${img}${ligtbl}</div><div class="right">${right}</div></div>${ctrl}</div>`;
+    `<div class="body"><div class="left">${img}${ligtbl}${trexdiv}</div><div class="right">${right}</div></div>${ctrl}</div>`;
 }
 
 let io = new IntersectionObserver(ents=>{ents.forEach(e=>{
