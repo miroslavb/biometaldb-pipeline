@@ -432,7 +432,24 @@ python3 scripts/recon3d/review_full_ui.py
 1. **Ligand template library** — ~300–500 frequent ligands → curated coordList + denticity + hapticity. 5,090 distinct ligands; top-1000 templates → 47% of complexes fully covered.
 2. **Stereochemistry** — cis/trans, fac/mer, Λ/Δ (currently one default isomer; enantiomers generated for chiral-at-metal).
 3. **Confidence tiers** + human-review queue for ambiguous assignments.
-4. **Scale run on hive3070T06** — full 9,414 xTB ≈ hours on 56 cores.
+4. **T-REX MAP recovery** — 302 complexes have ligand-only T-REX (no MAP section). Deep kekulize patch in `fix_trex_final.py` recovered 11 more; remaining 290+12 need RDKit-level fix in trex upstream.
+
+### T-REX Notation
+
+**Status**: ✅ 9,414/9,414 — 100% coverage.
+
+| Type | Count | Description |
+|------|-------|-------------|
+| Full T-REX (with MAP) | 9,112 | `xyz_to_trex` — metal, ligands, coordination map |
+| Ligand-only (no MAP) | 302 | `Metal{+ox} \| L=[ SMILES:... ]` — fallback for kekulize/timeout |
+
+**Generation pipeline**:
+- `build_trex_parallel.py` — ProcessPoolExecutor (48 workers), 15s timeout, 8,993/9,414 in 17 min on hive
+- `diag_trex_fails.py` — classify failures: timeout (157), kekulize (151), polynuclear (12), ok-with-30s (97)
+- `fix_trex_fails.py` — retry with SanitizeMol monkey-patch + 60s timeout → +108 recovered
+- `fix_trex_final.py` — deep patch (Chem.Mol, SanitizeMol, RemoveHs) + ligand-only fallback → +301 recovered
+
+**Output**: `/root/biometaldb-3d/out/full/trex.json` (1.8 MB, 9,414 entries)
 
 ## chem_pipeline_lib (Drawing Library)
 
