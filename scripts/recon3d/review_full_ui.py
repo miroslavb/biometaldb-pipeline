@@ -118,9 +118,6 @@ def build(out_dir, manifest_path=None):
     statuses = "".join(
         f'<button class="chip schip" data-status="{s}">{s} <i>{c}</i></button>'
         for s, c in by_status.most_common())
-    fails = "".join(
-        f'<button class="chip fchip" data-fail="{s}">{s} <i>{c}</i></button>'
-        for s, c in by_fail.most_common())
 
     html = """<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -135,7 +132,11 @@ body{font-family:system-ui,sans-serif;margin:0;background:#0f172a;color:#e2e8f0}
 .chip i{color:#64748b;font-style:normal;font-size:.72rem}
 .chip.on{background:#4338ca;color:#fff;border-color:#6366f1}
 .chip.schip.on{background:#0e7490;border-color:#22d3ee}
-.chip.fchip{border-color:#7c2d12;color:#fca5a5}.chip.fchip.on{background:#b91c1c;color:#fff;border-color:#f87171}
+.chip.rchip{border-color:#475569;color:#cbd5e1}.chip.rchip.on{background:#1e3a8a;border-color:#60a5fa;color:#fff}
+.chip.rchip[data-review="accept"].on{background:#16a34a;border-color:#22c55e}
+.chip.rchip[data-review="reject"].on{background:#b91c1c;border-color:#ef4444}
+.chip.rchip[data-review="flag"].on{background:#b45309;border-color:#fbbf24}
+.chip.rchip[data-review="unreviewed"].on{background:#475569;border-color:#94a3b8}
 .top input{background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:5px;padding:3px 8px}
 .top button.act{background:#16a34a;color:#fff;border:0;padding:4px 10px;border-radius:5px;cursor:pointer;font-size:.78rem}
 .top button.gho{background:transparent;color:#94a3b8;border:1px solid #334155;padding:4px 10px;border-radius:5px;cursor:pointer;font-size:.78rem}
@@ -186,12 +187,14 @@ a{color:#93c5fd}
 <button class="chip" id="metalAll">all</button>
 </div>
 <div class="bar">
-<span style="font-size:.78rem;color:#94a3b8">why-failed:</span> __FAILS__
-<button class="chip fchip" id="failAll">all</button>
-</div>
-<div class="bar">
 <span style="font-size:.78rem;color:#94a3b8">status:</span> __STATUSES__
 <button class="chip schip" id="statusAll">all</button>
+<span style="font-size:.78rem;color:#94a3b8;margin-left:12px">review:</span>
+<button class="chip rchip" data-review="accept">✓ accept</button>
+<button class="chip rchip" data-review="reject">✗ reject</button>
+<button class="chip rchip" data-review="flag">⚑ flag</button>
+<button class="chip rchip" data-review="unreviewed">— unreviewed</button>
+<button class="chip rchip" id="reviewAll">all</button>
 <input id="q" placeholder="#id or substring..." style="margin-left:8px">
 <button class="act" id="acceptValid">✓ validate all passing (page)</button>
 <button class="gho" id="exp">⬇ export reviews</button>
@@ -204,7 +207,7 @@ a{color:#93c5fd}
 <script>
 const PAGE_SIZE = __PAGE_SIZE__;
 const LS = 'biometaldb_full_review';
-let DATA = [], VIEW = {}, page = 0, fMetal = null, fStatus = null, fFail = null, fQ = '';
+let DATA = [], VIEW = {}, page = 0, fMetal = null, fStatus = null, fFail = null, fReview = null, fQ = '';
 let R = JSON.parse(localStorage.getItem(LS) || '{}');
 
 const esc = s => (s==null?'':(''+s)).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -215,6 +218,10 @@ function filtered(){
     if(fMetal && r.metal!==fMetal) return false;
     if(fStatus && r.status!==fStatus) return false;
     if(fFail && r.fail_reason!==fFail) return false;
+    if(fReview){
+      const rv = (R[r.id] && R[r.id].v) || 'unreviewed';
+      if(rv !== fReview) return false;
+    }
     if(fQ){ const q=fQ.toLowerCase();
       if(!((''+r.id)===fQ.replace('#','') || (''+r.id).includes(fQ.replace('#','')) ||
            JSON.stringify(r.ligands).toLowerCase().includes(q))) return false; }
@@ -346,15 +353,14 @@ fetch('index.json').then(r=>r.json()).then(j=>{
   document.getElementById('hcount').textContent=`${s.n} complexes · ${s.n_ok} built · ${s.n_struct} structures · ${s.n_valid} valid`+(s.n_recovered?` · ↻${s.n_recovered} recovered`:'');
   wireChips('.chip[data-metal]','metal',v=>fMetal=v);
   wireChips('.chip[data-status]','status',v=>fStatus=v);
-  wireChips('.chip[data-fail]','fail',v=>fFail=v);
+  wireChips('.chip[data-review]','review',v=>fReview=v);
   document.getElementById('metalAll').onclick=()=>{fMetal=null;document.querySelectorAll('.chip[data-metal]').forEach(x=>x.classList.remove('on'));page=0;render();};
   document.getElementById('statusAll').onclick=()=>{fStatus=null;document.querySelectorAll('.chip[data-status]').forEach(x=>x.classList.remove('on'));page=0;render();};
-  document.getElementById('failAll').onclick=()=>{fFail=null;document.querySelectorAll('.chip[data-fail]').forEach(x=>x.classList.remove('on'));page=0;render();};
+  document.getElementById('reviewAll').onclick=()=>{fReview=null;document.querySelectorAll('.chip[data-review]').forEach(x=>x.classList.remove('on'));page=0;render();};
   count(); render();
 });
 </script></body></html>"""
     html = (html.replace("__METALS__", metals).replace("__STATUSES__", statuses)
-                .replace("__FAILS__", fails or '<i style="color:#475569;font-size:.72rem">none</i>')
                 .replace("__PAGE_SIZE__", "48"))
     out = os.path.join(out_dir, "review.html")
     open(out, "w").write(html)
