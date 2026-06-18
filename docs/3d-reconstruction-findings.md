@@ -1,4 +1,4 @@
-# 3D Structure Reconstruction — Research Findings (2026-06-13)
+# 3D Structure Reconstruction — Research Findings (2026-06-18, updated)
 
 Reconstructing QM-optimization-ready 3D geometry for the 9,414 antiproliferative
 metal complexes in BiometalDB, from only: metal, oxidation state, dot-separated
@@ -19,7 +19,21 @@ either — just `SMILES_Ligands`, `Counterion`, metal/ox/charge. Donor-site
 assignment, denticity, hapticity, and coordination geometry must be **inferred**.
 That inference is the scientific core of the task.
 
-## Approach (new pipeline: scripts/recon3d/)
+## Full Run Results (2026-06-17, branch feat/3d-reconstruction)
+
+| Metric | Value |
+|--------|-------|
+| Total complexes | 9,414 |
+| Built (geometry produced) | 9,414 (100%) |
+| Structures generated (2 isomers Λ/Δ) | 20,202 |
+| Valid (passed all gates) | 19,830 (98.2% of built) |
+| Recovered via fallback/retry | 353 |
+| By metal: Ru 4,834 · Au 2,220 · Ir 1,431 · Rh 339 · Os 337 · Re 253 |
+
+All structures: XYZ, MOL2, SDF, TREXIO HDF5 (+ text dump), T-REX string.
+
+## Approach (pipeline: scripts/recon3d/)
+
 Engine: **Architector** (IBM, github.com/ChemMatCAS/Architector) + **GFN2-xTB**
 relaxation, in an isolated micromamba env at `/root/biometaldb-3d/arch-env`
 (no conda available; `xtb-python` from conda-forge supplies libxtb). The
@@ -67,17 +81,44 @@ Templating the top-K ligands fully covers: top-100 → 8%, top-300 → 21%,
 top-500 → 30%, top-1000 → 47% of complexes. **Half-sandwich (cymene+Cp*+arene+Cp)
 is the #2 motif after chloride** and is now handled.
 
+## Polynuclear / Organometallic complexes (scripts/recon3d/polynuclear/)
+
+For complexes with a **second metal in ligand SMILES** (titanocene/ferrocene
+sandwich co-ligands written with dative bonds `->`/`<-`), Architector/OpenBabel fail.
+
+| Module | Solution |
+|--------|----------|
+| `build_poly.py` | Fragment assembly + constrained GFN2-xTB relax (OpenBabel-free). Parse fragments → find each fragment's donor to core metal (carbene C / phosphine P / thiolate S) → embed per fragment → place around core at correct polyhedron (CN2=linear, CN4=tetra/sq) → merge + **GFN2-xTB with ALL M-coordination distances FROZEN** (harmonic constraints; soft springs, not hard freeze) so core sphere and internal sandwich both held. |
+| `bent_template.py` | **Idealised bent/parallel metallocene templates** replacing ETKDG. Bent Cp–M–Cp: Ti=130°, Zr/Hf=135°; Parallel: Fe/Ru/Os/Co/Ni=180°. Fixed M–Cp_centroid distances. **Adaptive force constant** for xTB: softer for metallocenes (0.5/0.8 vs 1.0/1.5) to let rings breathe. Fixes 6 titanocene failures caused by ETKDG's random overlapping Cp rings crashing xTB SCF. |
+
+## T-REX / TREXIO Output (NEW)
+
+Every valid structure emits:
+
+**T-REX string** (human-readable coordination summary):
+```
+Au{+1} | L=[ SMILES:Cn1nnnc1[S-], SMILES:c1coc(P(c2ccco2)c2ccco2)c1 ] | MAP:{ (1:7, 2:5) }
+Ru{+2} | L=[ SMILES:c1ccc(-c2ccccn2)nc1, SMILES:c1cnc2c(c1)c1c(c3cccnc32)OCCO1 ] | MAP:{ (1:13, 2:11), (1:3, 3:10) }
+```
+Fields: `Metal{ox}`, `L=[coordinating ligands in binding order]`, `MAP:{ligand_atom:metal_site}`.
+
+**TREXIO HDF5** (`complex_<cid>.h5`) — wavefunction-ready:
+- `nucleus` — Z, coordinates
+- `electron` — basis set, MO coefficients (extensible)
+- `wave_function` — determinants, CI coefficients (extensible)
+- `metadata` — method, energy, charge, mult, complex_id
+
+Plus text dump `complex_<cid>.trexio.txt` for inspection.
+
+## Fallback Builder (scripts/recon3d/simple_builder.py)
+
+For complexes failing Architector/xTB: RDKit 3D + custom metal-centered assembly + MMFF cleanup (no xTB). Filters haptics for Au/Ag/Cu, auto-adds `[Cl-]`/`NH3` placeholders to reach CN, parses `sanitize=False`. Covers the "hard" 194 previously failed complexes.
+
 ## Known gaps / next steps (priority order)
-1. **Ligand template library** (~300–500 curated ligands → coordList + denticity
-   + hapticity) — closes the denticity tail + locks haptic/common cases.
-2. Confidence tiers + human-review queue for ambiguous assignments (don't
-   fabricate connectivity the literature SMILES doesn't determine).
-3. Stereochemistry (cis/trans, fac/mer, Λ/Δ) — currently one default isomer.
-4. **Scale run on hive3070T06** (full 9,414 × xtb ≈ hours on 56 cores). This box
-   (hermes, 8 cores, memory-pressured) is unsuitable — background jobs are killed
-   on session resets.
-5. Persist real 3D (MOL/SDF/XYZ + regenerated TUCAN from correct connectivity)
-   back to the DB under new columns/flags; wire the 3Dmol.js viewer to them;
-   keep the old 2D fields separate.
+1. **Ligand template library** (~300–500 curated ligands → coordList + denticity + hapticity) — closes denticity tail + locks haptic/common cases.
+2. **Confidence tiers + human-review queue** for ambiguous assignments (don't fabricate connectivity the literature SMILES doesn't determine). Partial UI in `review_ui.py`.
+3. **Stereochemistry** (cis/trans, fac/mer, Λ/Δ) — currently one default isomer per geometry; isomer enumeration exists but needs stereochemical assignment.
+4. **Persist real 3D back to main DB** under new columns/flags; wire 3Dmol.js viewer to them; keep old 2D fields separate.
+5. **Scale run on hive3070T06** (full 9,414 × xtb ≈ hours on 56 cores). This box (hermes, 8 cores, memory-pressured) is unsuitable — background jobs killed on session resets.
 
 See `scripts/recon3d/README.md` for run instructions. Branch: `feat/3d-reconstruction`.
