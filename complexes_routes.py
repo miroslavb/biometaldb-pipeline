@@ -11,9 +11,51 @@ from flask import request, render_template_string, abort, send_file, Response
 from rdkit import Chem
 from rdkit.Chem import AllChem, Draw
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "biometaldb.sqlite")
-MOL3_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "mol3")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, "data", "biometaldb.sqlite")
+MOL3_DIR = os.path.join(BASE_DIR, "data", "mol3")
 STRUCT3D_DIR = "/root/ir_docking_structures"
+IR_CN_JSON = os.path.join(BASE_DIR, "data", "ir_cn_families.json")
+LIGANDS_JSON = os.path.join(BASE_DIR, "viewer", "ligands", "ligands.json")
+BUILD_IR_CN = os.path.join(BASE_DIR, "scripts", "build_ir_cn_families.py")
+
+# Shared nav bar across complex pages (keeps tabs consistent).
+NAV_HTML = (
+    '<a href="/">home</a>'
+    '<a href="/complexes">complexes</a>'
+    '<a href="/ir_cn_families">Ir C^N families</a>'
+    '<a href="/complexes/cell-death-heatmap">cell death map</a>'
+    '<a href="/dmpnn">D-MPNN</a>'
+)
+
+_IR_CN_CACHE = {"data": None, "png": None}
+
+
+def _load_ir_cn_families(force=False):
+    """Load (and lazily build) the precomputed Ir C^N family JSON, plus a
+    canonical-SMILES → ligand-PNG map for thumbnails."""
+    if _IR_CN_CACHE["data"] is not None and not force:
+        return _IR_CN_CACHE["data"], _IR_CN_CACHE["png"]
+    if force or not os.path.exists(IR_CN_JSON):
+        import subprocess
+        import sys
+        try:
+            subprocess.run([sys.executable, BUILD_IR_CN], check=True,
+                           cwd=BASE_DIR, capture_output=True, timeout=300)
+        except Exception as e:
+            print(f"ir_cn build failed: {e}")
+    data = {}
+    if os.path.exists(IR_CN_JSON):
+        with open(IR_CN_JSON) as f:
+            data = json.load(f)
+    png = {}
+    if os.path.exists(LIGANDS_JSON):
+        with open(LIGANDS_JSON) as f:
+            for lig in json.load(f).get("ligands", []):
+                if lig.get("png"):
+                    png[lig["smiles"]] = lig["png"]
+    _IR_CN_CACHE["data"], _IR_CN_CACHE["png"] = data, png
+    return data, png
 
 # ─── CSS (shared with D-MPNN) ────────────────────────────────────────────────
 COMPLEXES_CSS = """
@@ -61,7 +103,7 @@ code{background:#f1f5f9;padding:.1rem .3rem;border-radius:3px;font-size:.82rem}
 COMPLEXES_LIST = """<!DOCTYPE html><html><head><meta charset="utf-8">
 <title>Complexes — BiometalDB</title>
 """ + COMPLEXES_CSS + """</head><body>
-<div class="hdr"><div><a href="/">home</a><a href="/complexes" style="color:#93c5fd;font-weight:600">complexes</a><a href="/complexes/cell-death-heatmap">cell death map</a><a href="/dmpnn">D-MPNN</a></div>
+<div class="hdr"><div><a href="/">home</a><a href="/complexes" style="color:#93c5fd;font-weight:600">complexes</a><a href="/ir_cn_families">Ir C^N families</a><a href="/complexes/cell-death-heatmap">cell death map</a><a href="/dmpnn">D-MPNN</a></div>
 <h1>Coordination Complexes</h1>
 <div class="sub">{{ total }} complexes in database</div></div>
 <div class="wrap">
@@ -153,7 +195,7 @@ COMPLEXES_DETAIL = """<!DOCTYPE html><html><head><meta charset="utf-8">
 #mol3d{width:100%;height:420px;position:relative}
 </style></head><body>
 <div class="hdr"><div><a href="/">home</a><a href="/complexes">← all complexes</a>
-<a href="/dmpnn/{{ cid }}">D-MPNN</a></div>
+<a href="/ir_cn_families">Ir C^N families</a><a href="/dmpnn/{{ cid }}">D-MPNN</a></div>
 <h1>Complex #{{ cid }} — {{ metal }}({{ ox }}){% if abbr %} <span style="color:#93c5fd">[{{ abbr }}]</span>{% endif %}</h1></div>
 <div class="wrap">
 <div class="side">
@@ -242,6 +284,84 @@ function setStyle(s) {
 </div></body></html>"""
 
 
+# ─── Ir C^N families tab ───────────────────────────────────────────────────────
+IR_CN_PAGE = """<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>Iridium C,N-chelate families — BiometalDB</title>
+""" + COMPLEXES_CSS + """
+<style>
+.fam{margin-bottom:2rem}
+.fam h2{font-size:1.15rem;color:#1e40af;margin:0 0 .3rem}
+.fam .formula{font-family:'Inter',monospace;font-weight:700;color:#0f172a}
+.fam .desc{font-size:.85rem;color:#64748b;margin:.2rem 0 .9rem;max-width:760px}
+.cbk{font-size:.72rem;color:#475569;margin-bottom:.8rem}
+.cbk code{background:#eef2ff}
+.cx{background:#fff;border-radius:8px;padding:.7rem .9rem;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:.6rem;border-left:4px solid #3b82f6}
+.cx .top{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem}
+.cx .top a{font-weight:700;color:#1e40af;text-decoration:none}
+.ligrow{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.55rem}
+.lig{width:150px;border:1px solid #e2e8f0;border-radius:6px;padding:3px;background:#fff}
+.lig img{width:142px;height:96px;object-fit:contain;background:#fff;border-radius:4px}
+.lig .lbl{font-size:.62rem;font-weight:700;text-align:center;padding:2px 0}
+.lig .lbl.cn{color:#1e40af}.lig .lbl.nn{color:#9d174d}
+.lig .s{font-family:monospace;font-size:.56rem;color:#64748b;word-break:break-all;max-height:2.3em;overflow:hidden;text-align:center}
+.chg{display:inline-block;padding:.1rem .45rem;border-radius:4px;font-size:.68rem;font-weight:600;background:#e0e7ff;color:#3730a3;margin-left:.3rem}
+.chg0{background:#dcfce7;color:#166534}
+.dl3d a{font-size:.72rem;padding:.15rem .45rem;border-radius:4px;text-decoration:none;border:1px solid #e2e8f0;color:#3b82f6;margin-left:.3rem}
+.jump{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1.2rem}
+.jump a{background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:.35rem .9rem;font-size:.82rem;text-decoration:none;color:#1e40af;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.jump a:hover{background:#eff6ff}
+</style></head><body>
+<div class="hdr"><div>""" + NAV_HTML + """</div>
+<h1>Iridium cyclometalated C,N-chelate families</h1>
+<div class="sub">{{ data.n_bis_cn_nn + data.n_tris_cn }} Ir complexes · neutral or cationic · selected from {{ data.source_db }}</div></div>
+<div class="wrap">
+<div class="jump">
+{% for fk in data.family_order %}{% set fam = data.families[fk] %}
+<a href="#{{ fk }}"><b>{{ fam.formula }}</b> — {{ fam.count }}</a>{% endfor %}
+</div>
+{% for fk in data.family_order %}{% set fam = data.families[fk] %}
+<div class="fam" id="{{ fk }}">
+<h2><span class="formula">{{ fam.formula }}</span> — {{ fam.label }} <span style="color:#64748b;font-weight:400">({{ fam.count }})</span></h2>
+<div class="desc">{{ fam.desc }}</div>
+<div class="cbk">complex charge: {% for ch, n in fam.charge_breakdown.items() %}{% set chi = ch|int %}<code>{{ '+%d'|format(chi) if chi>0 else ('neutral' if chi==0 else chi) }}</code>×{{ n }} {% endfor %}</div>
+{% for c in fam.complexes %}
+<div class="cx">
+<div class="top">
+<div><a href="/complexes/{{ c.id }}" target="_blank">#{{ c.id }}</a>
+<span class="badge badge-ir">Ir(III)</span>
+<span class="chg {{ 'chg0' if c.charge==0 else '' }}">{{ '+%d'|format(c.charge) if c.charge and c.charge>0 else 'neutral' }}</span>
+{% if c.n_meas %}<span style="font-size:.75rem;color:#64748b;margin-left:.4rem">{{ c.n_meas }} meas.</span>{% endif %}
+</div>
+<div class="dl3d">
+<a href="/complexes/{{ c.id }}" target="_blank">detail</a>
+{% if c.has_mol3 %}<a href="/mol3/{{ c.id }}">MOL</a>{% endif %}
+<a href="/viewer/?id={{ c.id }}" target="_blank">3D</a>
+</div>
+</div>
+<div class="ligrow">
+{% for ls in c.cn_ligands %}
+<div class="lig"><div class="lbl cn">C^N</div>
+{% if png.get(ls) %}<img loading="lazy" src="/viewer/ligands/img/{{ png[ls] }}">{% endif %}
+<div class="s" title="{{ ls }}">{{ ls }}</div></div>
+{% endfor %}
+{% if c.nn_ligand %}
+<div class="lig"><div class="lbl nn">N^N</div>
+{% if png.get(c.nn_ligand) %}<img loading="lazy" src="/viewer/ligands/img/{{ png[c.nn_ligand] }}">{% endif %}
+<div class="s" title="{{ c.nn_ligand }}">{{ c.nn_ligand }}</div></div>
+{% endif %}
+</div>
+</div>
+{% endfor %}
+</div>
+{% endfor %}
+<p style="font-size:.78rem;color:#94a3b8;margin-top:2rem">
+C^N = κ²-C,N chelate (denticity 2, donors C+N); N^N = κ²-N,N chelate (denticity 2, donors N+N).
+Counterions and coordinated solvent are ignored; the remaining coordination sphere matches the family
+pattern exactly. Ligand chemistry from the pydentate oracle (ligand library). Regenerate with
+<code>scripts/build_ir_cn_families.py</code>.</p>
+</div></body></html>"""
+
+
 def metal_color(m):
     colors = {'Ir': '#3b82f6', 'Ru': '#ec4899', 'Rh': '#f59e0b', 'Os': '#6366f1', 'Re': '#10b981'}
     return colors.get(m, '#94a3b8')
@@ -320,6 +440,14 @@ def get_cell_death_types(complex_id):
 
 def register_complexes_routes(app):
     """Register enhanced complexes routes on the Flask app."""
+
+    @app.route("/ir_cn_families")
+    def ir_cn_families():
+        force = request.args.get("rebuild") == "1"
+        data, png = _load_ir_cn_families(force=force)
+        if not data:
+            return Response("Ir C^N family index unavailable.", status=503)
+        return render_template_string(IR_CN_PAGE, data=data, png=png)
 
     @app.route("/complexes")
     def complexes_list():
@@ -663,7 +791,7 @@ body{{font-family:'Inter',-apple-system,sans-serif;margin:0;background:#f0f2f5;c
 #sel-info{{display:none;margin:0 0 .8rem;font-size:.9rem;color:#1e40af;font-weight:500}}
 </style></head><body>
 <div class="hdr"><div>
-<a href="/">home</a><a href="/complexes">complexes</a><a href="/complexes/cell-death-heatmap" style="color:#93c5fd;font-weight:600">cell death map</a>
+<a href="/">home</a><a href="/complexes">complexes</a><a href="/ir_cn_families">Ir C^N families</a><a href="/complexes/cell-death-heatmap" style="color:#93c5fd;font-weight:600">cell death map</a>
 </div><h1>Metal → Cell Death Type Dependence</h1></div>
 <div class="wrap">
 <div class="card">
