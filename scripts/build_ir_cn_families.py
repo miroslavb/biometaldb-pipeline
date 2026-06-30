@@ -33,6 +33,7 @@ import sqlite3
 from collections import Counter
 
 from rdkit import Chem
+from rdkit.Chem import Descriptors
 from rdkit import RDLogger
 
 RDLogger.DisableLog("rdApp.*")
@@ -106,6 +107,13 @@ def main():
     # measurement counts for display
     meas = dict(con.execute(
         "SELECT complex_id, COUNT(*) FROM measurements GROUP BY complex_id").fetchall())
+    # min dark IC50 per complex (across all cell lines / measurements)
+    min_ic50_dark = {}
+    for cid, val in con.execute(
+            "SELECT complex_id, MIN(ic50_dark) FROM measurements "
+            "WHERE ic50_dark IS NOT NULL AND ic50_dark > 0 "
+            "GROUP BY complex_id").fetchall():
+        min_ic50_dark[cid] = val
     rows = con.execute(
         "SELECT id, oxidation_state, charge_complex, smiles_ligands, donor_atoms, has_mol3 "
         "FROM complexes WHERE metal=? ORDER BY id", (a.metal,)).fetchall()
@@ -142,6 +150,14 @@ def main():
         fam, info = classify_complex(smi, lmap)
         if not fam:
             continue
+        # compute molar mass from SMILES
+        mw = None
+        try:
+            mol = Chem.MolFromSmiles(smi)
+            if mol:
+                mw = round(Descriptors.MolWt(mol), 2)
+        except Exception:
+            pass
         entry = {
             "id": cid,
             "metal": a.metal,
@@ -151,6 +167,8 @@ def main():
             "donor_atoms": donor_atoms,
             "has_mol3": bool(has_mol3),
             "n_meas": meas.get(cid, 0),
+            "min_ic50_dark": min_ic50_dark.get(cid),
+            "mw": mw,
             **info,
         }
         families[fam]["complexes"].append(entry)

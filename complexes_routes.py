@@ -288,6 +288,7 @@ function setStyle(s) {
 IR_CN_PAGE = """<!DOCTYPE html><html><head><meta charset="utf-8">
 <title>Iridium C,N-chelate families — BiometalDB</title>
 """ + COMPLEXES_CSS + """
+<script src="https://3Dmol.org/build/3Dmol-min.js"></script>
 <style>
 .fam{margin-bottom:2rem}
 .fam h2{font-size:1.15rem;color:#1e40af;margin:0 0 .3rem}
@@ -310,56 +311,252 @@ IR_CN_PAGE = """<!DOCTYPE html><html><head><meta charset="utf-8">
 .jump{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1.2rem}
 .jump a{background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:.35rem .9rem;font-size:.82rem;text-decoration:none;color:#1e40af;box-shadow:0 1px 2px rgba(0,0,0,.06)}
 .jump a:hover{background:#eff6ff}
+/* IC50 / MW badges */
+.ic50{font-size:.72rem;font-weight:600;padding:.1rem .45rem;border-radius:4px;margin-left:.3rem}
+.ic50.good{background:#dcfce7;color:#166534}
+.ic50.none{background:#f1f5f9;color:#94a3b8}
+.mw-badge{font-size:.72rem;color:#475569;margin-left:.3rem}
+/* 3D viewer */
+.cx3d{width:100%;height:300px;position:relative;background:#0f172a;border-radius:6px;margin-top:.6rem;cursor:pointer;display:none}
+.cx3d.show{display:block}
+.cx3d .hint{color:#64748b;font-size:1rem;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)}
+.cx3d .lbl3d{position:absolute;top:4px;left:8px;font-size:.7rem;color:#94a3b8;z-index:5}
+/* toolbar */
+.toolbar{background:#fff;border-radius:8px;padding:.8rem 1.2rem;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:1.2rem;display:flex;gap:1rem;flex-wrap:wrap;align-items:center}
+.toolbar label{font-size:.78rem;color:#475569;font-weight:600;display:flex;align-items:center;gap:.3rem}
+.toolbar select,.toolbar input[type=number]{padding:.3rem .5rem;border:1px solid #e2e8f0;border-radius:5px;font-size:.82rem}
+.toolbar .btn-sm{padding:.3rem .7rem;border-radius:5px;font-size:.78rem;cursor:pointer;border:1px solid #e2e8f0;background:#fff;color:#3b82f6}
+.toolbar .btn-sm.active{background:#3b82f6;color:#fff;border-color:#3b82f6}
+.toolbar .count{margin-left:auto;font-size:.82rem;color:#64748b}
 </style></head><body>
 <div class="hdr"><div>""" + NAV_HTML + """</div>
 <h1>Iridium cyclometalated C,N-chelate families</h1>
 <div class="sub">{{ data.n_bis_cn_nn + data.n_tris_cn }} Ir complexes · neutral or cationic · selected from {{ data.source_db }}</div></div>
 <div class="wrap">
+<div class="toolbar">
+<label><input type="checkbox" id="ic50_filter" checked> IC50<sub>dark</sub> &lt; 10 µM</label>
+<label>Max IC50: <input type="number" id="ic50_max" value="10" min="0" step="0.1" style="width:70px"> µM</label>
+<label>Sort:
+<select id="sort_sel">
+<option value="mw_asc">Molar mass ↑</option>
+<option value="mw_desc">Molar mass ↓</option>
+<option value="ic50_asc">IC50 ↑</option>
+<option value="ic50_desc">IC50 ↓</option>
+<option value="id_asc">ID ↑</option>
+<option value="id_desc">ID ↓</option>
+</select>
+</label>
+<button class="btn-sm" id="show3d_btn">Show 3D</button>
+<button class="btn-sm" id="hide3d_btn">Hide 3D</button>
+<span class="count" id="result_count"></span>
+</div>
 <div class="jump">
 {% for fk in data.family_order %}{% set fam = data.families[fk] %}
 <a href="#{{ fk }}"><b>{{ fam.formula }}</b> — {{ fam.count }}</a>{% endfor %}
 </div>
-{% for fk in data.family_order %}{% set fam = data.families[fk] %}
-<div class="fam" id="{{ fk }}">
-<h2><span class="formula">{{ fam.formula }}</span> — {{ fam.label }} <span style="color:#64748b;font-weight:400">({{ fam.count }})</span></h2>
-<div class="desc">{{ fam.desc }}</div>
-<div class="cbk">complex charge: {% for ch, n in fam.charge_breakdown.items() %}{% set chi = ch|int %}<code>{{ '+%d'|format(chi) if chi>0 else ('neutral' if chi==0 else chi) }}</code>×{{ n }} {% endfor %}</div>
-{% for c in fam.complexes %}
-<div class="cx">
-<div class="top">
-<div><a href="/complexes/{{ c.id }}" target="_blank">#{{ c.id }}</a>
-<span class="badge badge-ir">Ir(III)</span>
-<span class="chg {{ 'chg0' if c.charge==0 else '' }}">{{ '+%d'|format(c.charge) if c.charge and c.charge>0 else 'neutral' }}</span>
-{% if c.n_meas %}<span style="font-size:.75rem;color:#64748b;margin-left:.4rem">{{ c.n_meas }} meas.</span>{% endif %}
-</div>
-<div class="dl3d">
-<a href="/complexes/{{ c.id }}" target="_blank">detail</a>
-{% if c.has_mol3 %}<a href="/mol3/{{ c.id }}">MOL</a>{% endif %}
-<a href="/viewer/?id={{ c.id }}" target="_blank">3D</a>
-</div>
-</div>
-<div class="ligrow">
-{% for ls in c.cn_ligands %}
-<div class="lig"><div class="lbl cn">C^N</div>
-{% if png.get(ls) %}<img loading="lazy" src="/viewer/ligands/img/{{ png[ls] }}">{% endif %}
-<div class="s" title="{{ ls }}">{{ ls }}</div></div>
-{% endfor %}
-{% if c.nn_ligand %}
-<div class="lig"><div class="lbl nn">N^N</div>
-{% if png.get(c.nn_ligand) %}<img loading="lazy" src="/viewer/ligands/img/{{ png[c.nn_ligand] }}">{% endif %}
-<div class="s" title="{{ c.nn_ligand }}">{{ c.nn_ligand }}</div></div>
-{% endif %}
-</div>
-</div>
-{% endfor %}
-</div>
-{% endfor %}
+<div id="families_container"></div>
 <p style="font-size:.78rem;color:#94a3b8;margin-top:2rem">
 C^N = κ²-C,N chelate (denticity 2, donors C+N); N^N = κ²-N,N chelate (denticity 2, donors N+N).
 Counterions and coordinated solvent are ignored; the remaining coordination sphere matches the family
 pattern exactly. Ligand chemistry from the pydentate oracle (ligand library). Regenerate with
 <code>scripts/build_ir_cn_families.py</code>.</p>
-</div></body></html>"""
+</div>
+<script>
+const RAW_DATA = {{ data_json|safe }};
+const PNG_MAP = {{ png_json|safe }};
+const STRUCT_BASE = '/viewer/full/struct/';
+
+// Flatten all complexes with family info
+function flatten(data) {
+  const all = [];
+  for (const fk of data.family_order) {
+    const fam = data.families[fk];
+    for (const c of fam.complexes) {
+      all.push({...c, family_key: fk, family_formula: fam.formula, family_label: fam.label, family_desc: fam.desc, family_charge_breakdown: fam.charge_breakdown, family_count: fam.count});
+    }
+  }
+  return all;
+}
+
+const ALL_COMPLEXES = flatten(RAW_DATA);
+const VIEWERS = {};
+let show3dMode = false;
+
+function applyFilters() {
+  const ic50Checked = document.getElementById('ic50_filter').checked;
+  const ic50Max = parseFloat(document.getElementById('ic50_max').value) || 10;
+  const sortVal = document.getElementById('sort_sel').value;
+
+  let filtered = ALL_COMPLEXES.filter(c => {
+    if (ic50Checked) {
+      if (c.min_ic50_dark == null || c.min_ic50_dark <= 0 || c.min_ic50_dark >= ic50Max) return false;
+    }
+    return true;
+  });
+
+  // Sort
+  const sorters = {
+    'mw_asc': (a,b) => (a.mw||9999) - (b.mw||9999),
+    'mw_desc': (a,b) => (b.mw||0) - (a.mw||0),
+    'ic50_asc': (a,b) => (a.min_ic50_dark||9999) - (b.min_ic50_dark||9999),
+    'ic50_desc': (a,b) => (b.min_ic50_dark||0) - (a.min_ic50_dark||0),
+    'id_asc': (a,b) => a.id - b.id,
+    'id_desc': (a,b) => b.id - a.id,
+  };
+  filtered.sort(sorters[sortVal] || sorters['mw_asc']);
+
+  document.getElementById('result_count').textContent = `${filtered.length} / ${ALL_COMPLEXES.length} complexes`;
+
+  // Group by family
+  const byFam = {};
+  for (const c of filtered) {
+    if (!byFam[c.family_key]) byFam[c.family_key] = [];
+    byFam[c.family_key].push(c);
+  }
+
+  const container = document.getElementById('families_container');
+  container.innerHTML = '';
+
+  for (const fk of RAW_DATA.family_order) {
+    const complexes = byFam[fk] || [];
+    if (complexes.length === 0) continue;
+    const fam = RAW_DATA.families[fk];
+    const div = document.createElement('div');
+    div.className = 'fam';
+    div.id = fk;
+    const chargeBreakdown = Object.entries(fam.charge_breakdown).map(([ch,n]) => {
+      const chi = parseInt(ch);
+      const lbl = chi > 0 ? `+${chi}` : (chi === 0 ? 'neutral' : chi);
+      return `<code>${lbl}</code>×${n}`;
+    }).join(' ');
+    div.innerHTML = `<h2><span class="formula">${fam.formula}</span> — ${fam.label} <span style="color:#64748b;font-weight:400">(${complexes.length})</span></h2>
+<div class="desc">${fam.desc}</div>
+<div class="cbk">complex charge: ${chargeBreakdown}</div>`;
+
+    for (const c of complexes) {
+      const card = document.createElement('div');
+      card.className = 'cx';
+      const chargeLbl = c.charge && c.charge > 0 ? `+${c.charge}` : 'neutral';
+      const ic50Badge = c.min_ic50_dark != null && c.min_ic50_dark > 0
+        ? `<span class="ic50 ${c.min_ic50_dark < 10 ? 'good' : ''}">IC50 dark: ${c.min_ic50_dark.toFixed(2)} µM</span>`
+        : '<span class="ic50 none">no IC50</span>';
+      const mwBadge = c.mw != null ? `<span class="mw-badge">MW: ${c.mw} g/mol</span>` : '';
+
+      // Ligand thumbnails
+      let ligHTML = '<div class="ligrow">';
+      for (const ls of (c.cn_ligands || [])) {
+        const img = PNG_MAP[ls] ? `<img loading="lazy" src="/viewer/ligands/img/${PNG_MAP[ls]}">` : '';
+        ligHTML += `<div class="lig"><div class="lbl cn">C^N</div>${img}<div class="s" title="${ls}">${ls}</div></div>`;
+      }
+      if (c.nn_ligand) {
+        const img = PNG_MAP[c.nn_ligand] ? `<img loading="lazy" src="/viewer/ligands/img/${PNG_MAP[c.nn_ligand]}">` : '';
+        ligHTML += `<div class="lig"><div class="lbl nn">N^N</div>${img}<div class="s" title="${c.nn_ligand}">${c.nn_ligand}</div></div>`;
+      }
+      ligHTML += '</div>';
+
+      card.innerHTML = `<div class="top">
+<div><a href="/complexes/${c.id}" target="_blank">#${c.id}</a>
+<span class="badge badge-ir">Ir(III)</span>
+<span class="chg ${c.charge===0?'chg0':''}">${chargeLbl}</span>
+${c.n_meas ? `<span style="font-size:.75rem;color:#64748b;margin-left:.4rem">${c.n_meas} meas.</span>` : ''}
+${ic50Badge}${mwBadge}</div>
+<div class="dl3d">
+<a href="/complexes/${c.id}" target="_blank">detail</a>
+${c.has_mol3 ? `<a href="/mol3/${c.id}">MOL</a>` : ''}
+<a href="/viewer/?id=${c.id}" target="_blank">3D</a>
+<button class="btn-sm" onclick="toggle3d(${c.id})">3D structure</button>
+</div></div>
+${ligHTML}
+<div class="cx3d" id="3d_${c.id}"><span class="lbl3d">Complex #${c.id}</span><span class="hint">loading 3D…</span></div>`;
+      div.appendChild(card);
+    }
+    container.appendChild(div);
+  }
+
+  // If 3D mode is on, auto-load visible viewers
+  if (show3dMode) initAll3d();
+}
+
+function toggle3d(cid) {
+  const el = document.getElementById('3d_' + cid);
+  if (!el) return;
+  if (el.classList.contains('show')) {
+    // Hide + dispose
+    el.classList.remove('show');
+    if (VIEWERS[cid]) { try { VIEWERS[cid].clear(); } catch(e){} delete VIEWERS[cid]; }
+    el.innerHTML = `<span class="lbl3d">Complex #${cid}</span><span class="hint">loading 3D…</span>`;
+  } else {
+    el.classList.add('show');
+    load3d(cid);
+  }
+}
+
+function load3d(cid) {
+  const el = document.getElementById('3d_' + cid);
+  if (!el) return;
+  el.innerHTML = '<span class="lbl3d">Complex #' + cid + '</span><span class="hint">loading 3D…</span>';
+  // Try SDF first, then XYZ
+  const sdfUrl = STRUCT_BASE + 'complex_' + cid + '_only.sdf';
+  fetch(sdfUrl).then(r => {
+    if (!r.ok) throw new Error('SDF not found');
+    return r.text();
+  }).then(txt => {
+    render3d(el, cid, txt, 'sdf');
+  }).catch(() => {
+    // Fallback: XYZ
+    const xyzUrl = STRUCT_BASE + 'complex_' + cid + '_only.xyz';
+    fetch(xyzUrl).then(r => {
+      if (!r.ok) throw new Error('XYZ not found');
+      return r.text();
+    }).then(txt => {
+      render3d(el, cid, txt, 'xyz');
+    }).catch(() => {
+      el.innerHTML = '<span class="lbl3d">Complex #' + cid + '</span><span class="hint" style="color:#ef4444">3D structure not available</span>';
+    });
+  });
+}
+
+function render3d(el, cid, moldata, fmt) {
+  el.innerHTML = '';
+  const v = $3Dmol.createViewer(el, {backgroundColor: '#0f172a'});
+  v.addModel(moldata, fmt);
+  v.setStyle({}, {stick: {radius: 0.14}, sphere: {scale: 0.27}});
+  v.setStyle({elem: ['Ir','Ru','Os','Rh','Re','Au','Ti','Fe','Co']}, {sphere: {scale: 0.5, color: 'gold'}});
+  v.zoomTo();
+  v.render();
+  VIEWERS[cid] = v;
+}
+
+function initAll3d() {
+  document.querySelectorAll('.cx3d').forEach(el => {
+    if (!el.classList.contains('show')) {
+      el.classList.add('show');
+      const cid = parseInt(el.id.replace('3d_', ''));
+      load3d(cid);
+    }
+  });
+}
+
+function disposeAll3d() {
+  for (const cid in VIEWERS) {
+    try { VIEWERS[cid].clear(); } catch(e){}
+    delete VIEWERS[cid];
+  }
+  document.querySelectorAll('.cx3d').forEach(el => {
+    el.classList.remove('show');
+    el.innerHTML = `<span class="lbl3d">Complex #${el.id.replace('3d_','')}</span><span class="hint">loading 3D…</span>`;
+  });
+}
+
+document.getElementById('ic50_filter').addEventListener('change', applyFilters);
+document.getElementById('ic50_max').addEventListener('input', applyFilters);
+document.getElementById('sort_sel').addEventListener('change', applyFilters);
+document.getElementById('show3d_btn').addEventListener('click', () => { show3dMode = true; initAll3d(); });
+document.getElementById('hide3d_btn').addEventListener('click', () => { show3dMode = false; disposeAll3d(); });
+
+applyFilters();
+</script>
+</body></html>"""
 
 
 def metal_color(m):
@@ -447,7 +644,11 @@ def register_complexes_routes(app):
         data, png = _load_ir_cn_families(force=force)
         if not data:
             return Response("Ir C^N family index unavailable.", status=503)
-        return render_template_string(IR_CN_PAGE, data=data, png=png)
+        return render_template_string(IR_CN_PAGE,
+                                      data=data,
+                                      png=png,
+                                      data_json=json.dumps(data, ensure_ascii=False),
+                                      png_json=json.dumps(png, ensure_ascii=False))
 
     @app.route("/complexes")
     def complexes_list():
