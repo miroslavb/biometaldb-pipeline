@@ -24,6 +24,7 @@ NAV_HTML = (
     '<a href="/">home</a>'
     '<a href="/complexes">complexes</a>'
     '<a href="/ir_cn_families">Ir C^N families</a>'
+    '<a href="/conformers">conformers</a>'
     '<a href="/complexes/cell-death-heatmap">cell death map</a>'
     '<a href="/dmpnn">D-MPNN</a>'
 )
