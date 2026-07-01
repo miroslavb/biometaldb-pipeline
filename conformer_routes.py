@@ -304,7 +304,7 @@ function loadViewer(cid) {
     })
     .then(sdfText => {
       // Count conformers
-      const parts = sdfText.split('$$$$\n').filter(p => p.trim());
+      const parts = sdfText.split('$$$$\\n').filter(p => p.trim());
       const nModels = parts.length;
 
       let element = document.getElementById(containerId);
@@ -321,7 +321,7 @@ function loadViewer(cid) {
       // Add all models
       for (let i = 0; i < nModels; i++) {
         let chunk = parts[i];
-        if (!chunk.includes('$$$$')) chunk += '\n$$$$';
+        if (!chunk.includes('$$$$')) chunk += '\\n$$$$';
         viewer.addModel(chunk, 'sdf');
       }
 
