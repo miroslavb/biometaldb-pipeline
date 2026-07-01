@@ -348,7 +348,7 @@ def index():
     <ul>
     <li><a href="/complexes">Browse complexes</a> (with 2D structures)</li>
     <li><a href="/ir_cn_families">🔷 Ir C^N families</a> — Ir(III) [Ir(C^N)₂(N^N)] (2 C,N + 1 N,N) &amp; [Ir(C^N)₃] (3 C,N), neutral/cationic</li>
-    <li><a href="/conformers">🧬 Ir(III) Conformer Browser</a> — 8,184 conformers for 427 Ir(III) complexes (Uniconf UFF/NLOPT geometries, GFN2-xTB single-point energies)</li>
+    <li><a href="/conformers">🧬 Ir(III) Conformer Browser</a> — 5,717 GFN2-xTB-optimized (correct-charge) distinct conformers for 427 Ir(III) complexes</li>
     <li><a href="/dmpnn">📊 D-MPNN Scoring</a> (Ru donor prediction results)</li>
     <li><a href="/viewer/full/review.html">🧪 3D Structure Reconstruction</a> — QM-ready geometries (Architector + GFN2-xTB), Λ/Δ enantiomers, TREXIO records, per-compound archives, manual review</li>
     <li><a href="/viewer/ligands/index.html">🧬 Ligand Library</a> — unique ligands grouped by chemical type (denticity, donors, hemilability, frequency)</li>

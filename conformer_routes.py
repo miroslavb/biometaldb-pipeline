@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Conformer Browser routes for BiometalDB Flask server.
-Shows all 8,184 conformers (Uniconf UFF/NLOPT geometries, GFN2-xTB single-point energies) for 427 Ir(III) complexes.
+Shows GFN2-xTB-optimized (correct per-complex charge/spin), RMSD+energy-deduped distinct conformers for 427 Ir(III) complexes.
 """
 import os, json
 from flask import request, render_template_string, send_file, abort, Response, redirect
@@ -106,7 +106,7 @@ body{font-family:'Inter',-apple-system,sans-serif;margin:0;background:var(--bg);
 </head><body>
 <div class="hdr"><div>""" + NAV_HTML + """</div>
 <h1>Ir(III) Conformer Browser</h1>
-<div class="sub">{{ total_compounds }} Ir(III) complexes · {{ total_conformers }} conformers · Uniconf v1.0.1 (UFF/NLOPT) + GFN2-xTB single-point</div></div>
+<div class="sub">{{ total_compounds }} Ir(III) complexes · {{ total_conformers }} distinct conformers · Uniconf seeds → GFN2-xTB optimized (per-complex charge)</div></div>
 <div class="wrap">
 <div class="stats">
 <div class="stat"><div class="n">{{ total_compounds }}</div><div class="l">Complexes</div></div>
@@ -138,9 +138,9 @@ body{font-family:'Inter',-apple-system,sans-serif;margin:0;background:var(--bg);
 <div class="pager" id="pager"></div>
 <p style="font-size:.75rem;color:var(--muted);margin-top:2rem">
 Conformer generation for Ir(III) C,N-chelate complexes.
-Method: Uniconf v1.0.1 (UFF force field + NLOPT optimization). 
-GFN2-xTB single-point energies computed for all conformers.
-SDF files sorted by energy (lowest first). 
+Method: Uniconf v1.0.1 (UFF/NLOPT) seeds. 
+Then GFN2-xTB geometry optimization at the correct per-complex charge/spin, with RMSD+energy deduplication to distinct minima.
+SDF sorted by GFN2-xTB energy (lowest first). 
 Regenerate with <code>scripts/build_zenith_conformers.py</code>.</p>
 </div>
 
@@ -229,7 +229,7 @@ function renderCards(filtered) {
     html += `</div>`;
     html += `<div class="viewer-wrap">`;
     html += `<div class="viewer-panel"><div class="cx3d" id="viewer-${r.id}"><div style="color:#64748b;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)">Click to load 3D</div></div>`;
-    html += `<div class="sdf-src">SDF: conformers_sorted.sdf (GFN2-xTB energies)</div></div>`;
+    html += `<div class="sdf-src">SDF: conformers_opt_sorted.sdf (GFN2-xTB optimized)</div></div>`;
     html += `<div class="table-panel">`;
     html += `<table class="etbl"><thead><tr><th>#</th><th>E (Hartree)</th><th>E (kcal/mol)</th><th>ΔE (kcal/mol)</th></tr></thead><tbody>`;
     if (r.energies_kcal && r.energies_kcal.length > 0) {
@@ -425,8 +425,11 @@ def register_conformer_routes(app):
 
     @app.route("/conformers/sdf/<int:cid>")
     def conformer_sdf(cid):
-        """Serve the conformers_sorted.sdf file for a compound."""
-        sdf_path = os.path.join(CONFORMER_DIR, f"complex_{cid}", "conformers_sorted.sdf")
+        """Serve the GFN2-xTB-optimized multi-conformer SDF (falls back to the original)."""
+        base = os.path.join(CONFORMER_DIR, f"complex_{cid}")
+        sdf_path = os.path.join(base, "opt", "conformers_opt_sorted.sdf")
+        if not os.path.exists(sdf_path):
+            sdf_path = os.path.join(base, "conformers_sorted.sdf")
         if not os.path.exists(sdf_path):
             abort(404)
         return send_file(sdf_path, mimetype="chemical/x-mdl-sdfile")
