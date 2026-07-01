@@ -1,0 +1,74 @@
+[
+ {
+  "cid": 4925,
+  "n_opt": 6,
+  "n_crest": 82,
+  "n_size_matched": 82,
+  "same_graph": 82,
+  "isomerized": 0,
+  "iso_pct": 0.0,
+  "groundstate_rmsd_A": 8.86,
+  "n_samegraph_lowE": 77,
+  "lowE_covered": 0
+ },
+ {
+  "cid": 5044,
+  "n_opt": 12,
+  "n_crest": 11,
+  "n_size_matched": 11,
+  "same_graph": 11,
+  "isomerized": 0,
+  "iso_pct": 0.0,
+  "groundstate_rmsd_A": 5.34,
+  "n_samegraph_lowE": 11,
+  "lowE_covered": 9
+ },
+ {
+  "cid": 5309,
+  "n_opt": 44,
+  "n_crest": 895,
+  "n_size_matched": 895,
+  "same_graph": 895,
+  "isomerized": 0,
+  "iso_pct": 0.0,
+  "groundstate_rmsd_A": 1.7,
+  "n_samegraph_lowE": 731,
+  "lowE_covered": 0
+ },
+ {
+  "cid": 5576,
+  "n_opt": 7,
+  "n_crest": 21,
+  "n_size_matched": 21,
+  "same_graph": 21,
+  "isomerized": 0,
+  "iso_pct": 0.0,
+  "groundstate_rmsd_A": 1.66,
+  "n_samegraph_lowE": 21,
+  "lowE_covered": 0
+ },
+ {
+  "cid": 5907,
+  "n_opt": 2,
+  "n_crest": 2,
+  "n_size_matched": 2,
+  "same_graph": 2,
+  "isomerized": 0,
+  "iso_pct": 0.0,
+  "groundstate_rmsd_A": 2.62,
+  "n_samegraph_lowE": 2,
+  "lowE_covered": 0
+ },
+ {
+  "cid": 9283,
+  "n_opt": 46,
+  "n_crest": 479,
+  "n_size_matched": 479,
+  "same_graph": 479,
+  "isomerized": 0,
+  "iso_pct": 0.0,
+  "groundstate_rmsd_A": 6.3,
+  "n_samegraph_lowE": 247,
+  "lowE_covered": 0
+ }
+]

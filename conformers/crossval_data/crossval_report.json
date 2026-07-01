@@ -1,0 +1,80 @@
+[
+ {
+  "cid": 4925,
+  "n_rot": 3,
+  "n_opt": 6,
+  "n_crest_samegraph": 82,
+  "n_lowE": 77,
+  "coord_donor_dev_A": 0.001,
+  "cov_1.0": 0.0,
+  "cov_1.5": 0.0,
+  "cov_2.0": 0.0,
+  "worst_miss_A": 8.58,
+  "our_confirmed": "0/6"
+ },
+ {
+  "cid": 5044,
+  "n_rot": 3,
+  "n_opt": 12,
+  "n_crest_samegraph": 11,
+  "n_lowE": 11,
+  "coord_donor_dev_A": 0.001,
+  "cov_1.0": 0.82,
+  "cov_1.5": 1.0,
+  "cov_2.0": 1.0,
+  "worst_miss_A": 1.08,
+  "our_confirmed": "2/12"
+ },
+ {
+  "cid": 5309,
+  "n_rot": 8,
+  "n_opt": 44,
+  "n_crest_samegraph": 895,
+  "n_lowE": 731,
+  "coord_donor_dev_A": 0.003,
+  "cov_1.0": 0.0,
+  "cov_1.5": 0.13,
+  "cov_2.0": 1.0,
+  "worst_miss_A": 2.02,
+  "our_confirmed": "0/44"
+ },
+ {
+  "cid": 5576,
+  "n_rot": 4,
+  "n_opt": 7,
+  "n_crest_samegraph": 21,
+  "n_lowE": 21,
+  "coord_donor_dev_A": 0.002,
+  "cov_1.0": 0.0,
+  "cov_1.5": 0.0,
+  "cov_2.0": 1.0,
+  "worst_miss_A": 1.83,
+  "our_confirmed": "0/7"
+ },
+ {
+  "cid": 5907,
+  "n_rot": 1,
+  "n_opt": 2,
+  "n_crest_samegraph": 2,
+  "n_lowE": 2,
+  "coord_donor_dev_A": 0.002,
+  "cov_1.0": 0.0,
+  "cov_1.5": 0.0,
+  "cov_2.0": 0.0,
+  "worst_miss_A": 2.58,
+  "our_confirmed": "0/2"
+ },
+ {
+  "cid": 9283,
+  "n_rot": 7,
+  "n_opt": 46,
+  "n_crest_samegraph": 479,
+  "n_lowE": 247,
+  "coord_donor_dev_A": 0.009,
+  "cov_1.0": 0.0,
+  "cov_1.5": 0.0,
+  "cov_2.0": 0.0,
+  "worst_miss_A": 4.27,
+  "our_confirmed": "0/46"
+ }
+]

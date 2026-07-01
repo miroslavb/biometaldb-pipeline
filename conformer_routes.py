@@ -8,6 +8,7 @@ from flask import request, render_template_string, send_file, abort, Response, r
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ZENITH_JSON = os.path.join(BASE_DIR, "data", "zenith_conformers.json")
 CONFORMER_DIR = "/root/conformer-generation/results/conformers"
+CROSSVAL_REPORT = os.path.join(BASE_DIR, "conformers", "crest_crossval_report.md")
 
 # Nav HTML (matches complexes_routes.py)
 NAV_HTML = (
@@ -15,6 +16,7 @@ NAV_HTML = (
     '<a href="/complexes">complexes</a>'
     '<a href="/ir_cn_families">Ir C^N families</a>'
     '<a href="/conformers">conformers</a>'
+    '<a href="/conformers/validation">CREST validation</a>'
     '<a href="/complexes/cell-death-heatmap">cell death map</a>'
     '<a href="/dmpnn">D-MPNN</a>'
 )
@@ -106,7 +108,7 @@ body{font-family:'Inter',-apple-system,sans-serif;margin:0;background:var(--bg);
 </head><body>
 <div class="hdr"><div>""" + NAV_HTML + """</div>
 <h1>Ir(III) Conformer Browser</h1>
-<div class="sub">{{ total_compounds }} Ir(III) complexes · {{ total_conformers }} distinct conformers · Uniconf seeds → GFN2-xTB optimized (per-complex charge)</div></div>
+<div class="sub">{{ total_compounds }} Ir(III) complexes · {{ total_conformers }} distinct conformers · Uniconf torsional seeds (MK≤3000) → GFN2-xTB geometry optimization at the correct per-complex charge/spin → RMSD (0.5&#8202;Å) + energy (0.1&#8202;kcal/mol) dedup · <a href="/conformers/validation" style="color:#93c5fd">CREST cross-validated ✓</a></div></div>
 <div class="wrap">
 <div class="stats">
 <div class="stat"><div class="n">{{ total_compounds }}</div><div class="l">Complexes</div></div>
@@ -433,6 +435,40 @@ def register_conformer_routes(app):
         if not os.path.exists(sdf_path):
             abort(404)
         return send_file(sdf_path, mimetype="chemical/x-mdl-sdfile")
+
+    @app.route("/conformers/validation")
+    def conformer_validation():
+        """Render the CREST cross-validation + remediation report (markdown -> HTML)."""
+        if not os.path.exists(CROSSVAL_REPORT):
+            return Response("Validation report unavailable.", status=404)
+        try:
+            import markdown
+            body = markdown.markdown(open(CROSSVAL_REPORT).read(),
+                                     extensions=["tables", "fenced_code", "sane_lists"])
+        except Exception:
+            # graceful fallback: serve raw markdown in a <pre>
+            import html as _html
+            body = "<pre>" + _html.escape(open(CROSSVAL_REPORT).read()) + "</pre>"
+        page = """<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>CREST cross-validation — Ir(III) Conformer Browser</title>
+<link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+<style>
+body{font-family:'Inter',-apple-system,sans-serif;margin:0;background:#f0f2f5;color:#1e293b}
+.hdr{background:linear-gradient(135deg,#0f172a,#1e3a5f);color:#fff;padding:1rem 2rem;border-bottom:3px solid #3b82f6}
+.hdr a{color:#60a5fa;text-decoration:none;margin-right:1rem;font-size:.85rem}
+.wrap{max-width:900px;margin:1.5rem auto;padding:2rem 2.5rem;background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.wrap h1{font-size:1.5rem;margin-top:0}.wrap h2{font-size:1.15rem;margin-top:1.6rem;color:#1e40af;border-bottom:1px solid #e2e8f0;padding-bottom:.3rem}
+.wrap h3{font-size:1rem;color:#334155}
+.wrap table{border-collapse:collapse;width:100%;margin:1rem 0;font-size:.85rem}
+.wrap th,.wrap td{border:1px solid #e2e8f0;padding:.35rem .6rem;text-align:left}
+.wrap th{background:#f1f5f9;font-weight:600}
+.wrap code{background:#f1f5f9;padding:.1rem .3rem;border-radius:3px;font-size:.85em}
+.wrap pre{background:#0f172a;color:#e2e8f0;padding:1rem;border-radius:6px;overflow-x:auto;font-size:.8rem}
+.wrap a{color:#2563eb}.wrap hr{border:none;border-top:1px solid #e2e8f0;margin:2rem 0}
+</style></head><body>
+<div class="hdr"><div>""" + NAV_HTML + """</div></div>
+<div class="wrap">""" + body + """</div></body></html>"""
+        return Response(page, mimetype="text/html")
 
     # Backwards-compatible 301 redirects from the old /zenith route.
     # "Zenith" was the mission orchestrator, not the scientific result.

@@ -32,3 +32,14 @@ Thumbs.db
 # Logs
 *.log
 mol-draw-repo/
+
+# Runtime artifacts / large dirs (added 2026-07-01)
+venv/
+chroma/
+projects/
+static/complexes/
+viewer/full/
+viewer/ir100/
+viewer/ligands/
+*.bak
+*.bak.*
